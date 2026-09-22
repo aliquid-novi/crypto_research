@@ -1,0 +1,61 @@
+{
+  "preset": "wide_tick",
+  "seed": 11,
+  "hours": 6.0,
+  "tick": 20.0,
+  "lot": 0.01,
+  "s0": 78000.0,
+  "start_ms": 1758000000000,
+  "daily_vol_normal": 0.01,
+  "hawkes": {
+    "mu_base": 0.6,
+    "beta": 2.0,
+    "alpha_self": 0.8,
+    "alpha_cross": 0.4,
+    "branching_ratio": 0.6000000000000001
+  },
+  "impact_kappa": 3.0,
+  "regimes": {
+    "0": {
+      "name": "calm",
+      "vol_mult": 0.55,
+      "int_mult": 0.6,
+      "hs_ticks": 0.15
+    },
+    "1": {
+      "name": "normal",
+      "vol_mult": 1.0,
+      "int_mult": 1.0,
+      "hs_ticks": 0.3
+    },
+    "2": {
+      "name": "stressed",
+      "vol_mult": 2.6,
+      "int_mult": 2.4,
+      "hs_ticks": 1.5
+    }
+  },
+  "regime_transition": [
+    [
+      0.9994,
+      0.00055,
+      5e-05
+    ],
+    [
+      0.0005,
+      0.999,
+      0.0005
+    ],
+    [
+      0.0001,
+      0.0039,
+      0.996
+    ]
+  ],
+  "depth_profile": {
+    "c": 0.15,
+    "gamma": 0.7
+  },
+  "n_trades": 59357,
+  "n_book_updates": 268918
+}
