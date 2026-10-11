@@ -27,9 +27,38 @@ Everything is in basis points of the reference mid. Convert your spread first:
     ref      = (df.hl_mid + df.bin_mid) / 2
     dev_bps  = (df.hl_mid - df.bin_mid) / ref * 1e4
 
-Fee defaults below were checked on 2026-10-03 from secondary sources, not the
-venues' own schedules. VERIFY THEM against your account before quoting any
-number from this to anyone.
+----------------------------------------------------------------------------
+FEE PROVENANCE  (read before quoting any number from this to anyone)
+----------------------------------------------------------------------------
+Binance USDⓈ-M VIP 0 (0.020% / 0.050%) and VIP 3 (0.012% / 0.032%) were
+confirmed on 2026-10-11 against two independent secondary sources. VIP 1, 2
+and 4+ are ESTIMATES and are flagged as such in the table below — Binance
+raised VIP 1 and VIP 2 taker fees on 2026-03-18 while cutting the volume
+thresholds, and no source gave the full post-change ladder.
+
+The default is now VIP 3, not VIP 0. VIP 0 is a retail assumption and it was
+making the hurdle roughly 1.8 bps too high. Note that after the March 2026
+change VIP 1's taker fee is the SAME as VIP 0's (0.05%), so VIP 3 is the
+first tier that is meaningfully cheaper on taker. Its gate is 50M USD of
+30-day futures volume or 100 BNB held.
+
+None of this is your account. Pull the real tier off the account the data
+came from before anyone sizes anything on it.
+
+----------------------------------------------------------------------------
+THE HALF-SPREAD IS A BIGGER ERROR THAN THE FEE TIER
+----------------------------------------------------------------------------
+half_spread_bps below was hardcoded from a single observed PENDLE quote
+(bid 2.440 / ask 2.441 -> 4.1 bps wide -> 2.05 bps half). The book data in
+FV_2.ipynb reports a median quoted spread of 0.112 bps on Binance and 0.113
+on Hyperliquid — about 36x tighter.
+
+Those two cannot both be right, and the gap is worth ~8 bps on an all-taker
+round trip, which is larger than the entire fee question. Use
+`venues_from_book(df)` to measure the half-spread from the same frame you are
+trading, instead of trusting either hardcoded number. If the measured value
+comes back implausibly tight, the bug is in the book join or the resample,
+not in the venue — go and find it before trusting any cost figure here.
 """
 
 from __future__ import annotations
@@ -77,19 +106,177 @@ HYPERLIQUID_T6 = VenueFees(
     half_spread_bps=1.8,    # from your sample: (2.44145 - 2.441) / 2.4415 * 1e4
 )
 
-# Binance USDⓈ-M futures, VIP 0: 0.02% maker, 0.05% taker (no BNB discount).
-BINANCE_VIP0 = VenueFees(
-    name="Binance PENDLE-USDT (VIP 0)",
-    maker_bps=2.0,
-    taker_bps=5.0,
-    half_spread_bps=2.0,    # from your sample: (2.441 - 2.440) / 2 / 2.4405 * 1e4
-)
+# ---------------------------------------------------------- Binance ladder
+#
+# Binance USDⓈ-M futures, standard schedule, in bps. (confirmed) means checked
+# against two independent sources on 2026-10-11; (est.) means interpolated and
+# NOT to be quoted. Thresholds are 30-day futures volume, post the 2026-03-18
+# cut, or the BNB balance alternative.
+
+BINANCE_TIERS: dict[int, tuple[float, float, str]] = {
+    # vip: (maker_bps, taker_bps, note)
+    0: (2.0, 5.0, "confirmed | retail, no threshold"),
+    1: (1.6, 5.0, "est. maker | taker confirmed raised to 0.05% | 5M or 5 BNB"),
+    2: (1.4, 4.0, "est. maker | taker confirmed raised to 0.04% | 10M or 25 BNB"),
+    3: (1.2, 3.2, "confirmed | 50M or 100 BNB"),
+    4: (1.0, 3.0, "est. | 500 BNB"),
+    5: (0.8, 2.7, "est. | 1,000 BNB"),
+    6: (0.6, 2.5, "est."),
+    7: (0.4, 2.2, "est."),
+    8: (0.2, 2.0, "est."),
+    9: (0.0, 1.7, "est."),
+}
+
+BNB_FEE_DISCOUNT = 0.10        # 10% off standard fees when paying fees in BNB
+
+
+def binance_fees(
+    vip: int = 3,
+    *,
+    half_spread_bps: float = 2.0,
+    bnb_discount: bool = False,
+    symbol: str = "PENDLE-USDT",
+    extra_slip_bps: float = 0.0,
+) -> VenueFees:
+    """
+    Build a Binance VenueFees at a given VIP level.
+
+    vip             0-9. Default 3 — the first tier that is genuinely cheaper
+                    on taker after the 2026-03-18 change, and a conservative
+                    stand-in for a desk doing real volume.
+    bnb_discount    10% off both maker and taker if fees are paid in BNB.
+                    Only set this if the futures wallet actually carries BNB.
+    half_spread_bps MEASURE THIS. See venues_from_book(). The default is the
+                    old hardcoded PENDLE figure and is probably wrong for your
+                    frame.
+    """
+    if vip not in BINANCE_TIERS:
+        raise ValueError(f"vip must be 0-9, got {vip}")
+    maker, taker, note = BINANCE_TIERS[vip]
+    if bnb_discount:
+        maker *= 1.0 - BNB_FEE_DISCOUNT
+        taker *= 1.0 - BNB_FEE_DISCOUNT
+    tag = f"VIP {vip}" + (" +BNB" if bnb_discount else "")
+    return VenueFees(
+        name=f"Binance {symbol} ({tag})",
+        maker_bps=maker,
+        taker_bps=taker,
+        half_spread_bps=half_spread_bps,
+        extra_slip_bps=extra_slip_bps,
+    )
+
+
+BINANCE_VIP0 = binance_fees(0)      # kept so old calls still run
+BINANCE_VIP3 = binance_fees(3)      # the new default
+
+
+def fee_ladder(
+    maker_frac: float | tuple[float, float] = 0.95,
+    venue_a: VenueFees | None = None,
+    venue_b_half_spread: float = 2.0,
+    *,
+    bnb_discount: bool = False,
+    **kw,
+) -> pd.DataFrame:
+    """
+    Round-trip cost at every Binance VIP level, holding everything else fixed.
+
+    The point of this table is to show how much of the hurdle is the fee tier
+    and how much is structural. If the spread between VIP 0 and VIP 3 is a
+    large fraction of your break-even, the highest-return action available is
+    an operations conversation, not a better model.
+    """
+    venue_a = HYPERLIQUID_T6 if venue_a is None else venue_a
+    rows = {}
+    for vip, (_, _, note) in BINANCE_TIERS.items():
+        vb = binance_fees(vip, half_spread_bps=venue_b_half_spread,
+                          bnb_discount=bnb_discount)
+        rows[f"VIP {vip}"] = {
+            "maker_bps": vb.maker_bps,
+            "taker_bps": vb.taker_bps,
+            "round_trip_cost_bps": round_trip_cost_bps(maker_frac, venue_a,
+                                                       vb, **kw),
+            "source": note,
+        }
+    out = pd.DataFrame(rows).T
+    base = out.loc["VIP 0", "round_trip_cost_bps"]
+    out["saving_vs_VIP0"] = base - out["round_trip_cost_bps"]
+    return out[["maker_bps", "taker_bps", "round_trip_cost_bps",
+                "saving_vs_VIP0", "source"]]
+
+
+# -------------------------------------------------- measure, don't assume
+
+def half_spread_from_book(
+    df: pd.DataFrame,
+    *,
+    hl_mid="hl_mid", hl_bid="hl_bid",
+    bin_bid="bin_bid", bin_ask="ask",
+    ref="reference_mid",
+    stat: str = "median",
+) -> pd.Series:
+    """
+    Measure each venue's half-spread from the joined book frame, in bps.
+
+    This replaces a number someone typed in once with a number your own data
+    says. A taker fill crosses half the quoted spread, so this is what you
+    actually pay — and it is a per-venue, time-varying quantity, not a
+    constant. The median is the honest central case; the 75th is what you get
+    when you are trading because something moved, which is most of the time.
+    """
+    agg = {"median": lambda s: s.median(), "mean": lambda s: s.mean(),
+           "p75": lambda s: s.quantile(0.75)}[stat]
+    r = df[ref]
+    full_hl = 2.0 * (df[hl_mid] - df[hl_bid]) / r * 1e4
+    full_bin = (df[bin_ask] - df[bin_bid]) / r * 1e4
+    return pd.Series({
+        "hl_full_spread_bps": agg(full_hl),
+        "hl_half_spread_bps": agg(full_hl) / 2.0,
+        "bin_full_spread_bps": agg(full_bin),
+        "bin_half_spread_bps": agg(full_bin) / 2.0,
+    })
+
+
+def venues_from_book(
+    df: pd.DataFrame,
+    *,
+    vip: int = 3,
+    bnb_discount: bool = False,
+    stat: str = "p75",
+    symbol: str = "PENDLE",
+    verbose: bool = True,
+) -> tuple[VenueFees, VenueFees]:
+    """
+    Build both VenueFees with half-spreads measured from your own frame.
+
+        va, vb = venues_from_book(df, vip=3)
+        plot_pnl(spread_bps, taker=0.05, maker=0.95, venue_a=va, venue_b=vb)
+
+    Defaults to the 75th percentile of the quoted spread rather than the
+    median, because you cross the book when something has moved, and the book
+    is wider then. Pass stat="median" for the softer version.
+    """
+    m = half_spread_from_book(df, stat=stat)
+    if verbose:
+        print(m.round(4).to_string())
+        if m["bin_full_spread_bps"] < 0.5:
+            print(f"\n[warn] measured Binance quoted spread is "
+                  f"{m['bin_full_spread_bps']:.3f} bps. On a 2-4 USD alt perp "
+                  f"one tick is several bps, so this is implausibly tight. "
+                  f"Check the book join and the resample aggregation before "
+                  f"using these costs.")
+    va = VenueFees(name=f"Hyperliquid {symbol}-USD (tier 6)",
+                   maker_bps=0.0, taker_bps=2.4,
+                   half_spread_bps=float(m["hl_half_spread_bps"]))
+    vb = binance_fees(vip, half_spread_bps=float(m["bin_half_spread_bps"]),
+                      bnb_discount=bnb_discount, symbol=f"{symbol}-USDT")
+    return va, vb
 
 
 def round_trip_cost_bps(
     maker_frac: float | tuple[float, float],
     venue_a: VenueFees = HYPERLIQUID_T6,
-    venue_b: VenueFees = BINANCE_VIP0,
+    venue_b: VenueFees = BINANCE_VIP3,
     hold_hours: float = 0.0,
     funding_bps_per_hour: float = 0.0,
 ) -> float:
@@ -115,7 +302,7 @@ def round_trip_cost_bps(
 def cost_breakdown(
     maker_frac: float | tuple[float, float],
     venue_a: VenueFees = HYPERLIQUID_T6,
-    venue_b: VenueFees = BINANCE_VIP0,
+    venue_b: VenueFees = BINANCE_VIP3,
     hold_hours: float = 0.0,
     funding_bps_per_hour: float = 0.0,
 ) -> pd.Series:
@@ -265,7 +452,7 @@ def plot_pnl(
     take_profits_bps: Sequence[float] = (2, 4, 6, 8, 10, 12, 15, 20, 25, 30),
     *,
     venue_a: VenueFees = HYPERLIQUID_T6,
-    venue_b: VenueFees = BINANCE_VIP0,
+    venue_b: VenueFees = BINANCE_VIP3,
     stop_bps: float | None = None,
     horizon_bars: int = 600,
     entry_bps: float | None = None,
@@ -426,7 +613,13 @@ def _synthetic(n: int = 40_000, seed: int = 0) -> pd.Series:
 if __name__ == "__main__":
     s = _synthetic()
 
-    print("=" * 70, "\nALL TAKER\n", "=" * 70, sep="")
+    print("=" * 70, "\nCOST BY BINANCE VIP TIER (95% maker)\n", "=" * 70, sep="")
+    print(fee_ladder(maker_frac=0.95).to_string())
+    print("\nSame, all taker:")
+    print(fee_ladder(maker_frac=0.0)[["round_trip_cost_bps",
+                                      "saving_vs_VIP0"]].to_string())
+
+    print("\n" + "=" * 70, "\nALL TAKER\n", "=" * 70, sep="")
     fig, res = plot_pnl(s, taker=1.0, maker=0.0, stop_bps=12, horizon_bars=600)
     fig.savefig("spread_cost_all_taker.png", dpi=110)
 
