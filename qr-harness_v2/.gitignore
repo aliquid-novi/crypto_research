@@ -1,0 +1,27 @@
+# data never goes to GitHub
+data/
+*.parquet
+*.feather
+*.h5
+*.csv.gz
+research/papers/pdfs/
+
+# notebooks: the paired .py (jupytext) is the source of truth; .ipynb carry outputs
+research/notebooks/*.ipynb
+.ipynb_checkpoints/
+
+# agent scratch (notebook dumps, throwaway checks)
+.scratch/
+
+# secrets / local
+.env
+.env.*
+*.key
+.claude/settings.local.json
+
+# python
+__pycache__/
+*.pyc
+.pytest_cache/
+.venv/
+*.egg-info/
