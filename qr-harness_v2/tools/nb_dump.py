@@ -64,7 +64,7 @@ def main() -> int:
         if not alt.exists():
             return 1
         nb_path = alt
-    nb = json.loads(nb_path.read_text())
+    nb = json.loads(nb_path.read_text(encoding="utf-8"))  # notebooks are UTF-8; Windows default is cp1252
     cells = nb.get("cells", [])
 
     out_dir = ROOT / ".scratch" / "nb_dump" / nb_path.stem
