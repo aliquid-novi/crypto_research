@@ -1,0 +1,657 @@
+\documentclass[11pt,a4paper]{article}
+\usepackage[margin=2.3cm]{geometry}
+\usepackage{amsmath,amssymb,amsthm,mathtools,bm}
+\usepackage{lmodern}
+\usepackage[T1]{fontenc}
+\usepackage{booktabs,array,tabularx}
+\usepackage{xcolor}
+\usepackage[most]{tcolorbox}
+\usepackage{enumitem}
+\usepackage[hidelinks]{hyperref}
+\usepackage{microtype}
+
+\definecolor{codebg}{HTML}{F3F2EE}
+\definecolor{warnbg}{HTML}{FBEFE6}
+\definecolor{warnline}{HTML}{C0662B}
+\definecolor{notebg}{HTML}{EAF1F7}
+\definecolor{noteline}{HTML}{3B6EA5}
+
+\newtcolorbox{incode}[1][]{colback=codebg,colframe=codebg,boxrule=0pt,arc=2pt,left=6pt,right=6pt,top=4pt,bottom=4pt,fontupper=\small,title={\small\bfseries In the code},coltitle=black,colbacktitle=codebg,attach title to upper={\quad},#1}
+\newtcolorbox{warn}[1][]{colback=warnbg,colframe=warnline,boxrule=0.6pt,arc=2pt,left=6pt,right=6pt,top=4pt,bottom=4pt,fontupper=\small,#1}
+\newtcolorbox{note}[1][]{colback=notebg,colframe=noteline,boxrule=0.6pt,arc=2pt,left=6pt,right=6pt,top=4pt,bottom=4pt,fontupper=\small,#1}
+
+\newcommand{\code}[1]{\texttt{\detokenize{#1}}}
+\newcommand{\E}{\mathbb{E}}
+\newcommand{\Var}{\operatorname{Var}}
+\newcommand{\Cov}{\operatorname{Cov}}
+\newcommand{\sinc}{\operatorname{sinc}}
+\newcommand{\ii}{\mathrm{i}}
+\newcommand{\dd}{\,\mathrm{d}}
+\DeclareMathOperator*{\argmin}{arg\,min}
+\DeclareMathOperator*{\argmax}{arg\,max}
+
+\setlist{itemsep=2pt,topsep=4pt}
+\setlength{\parskip}{4pt}
+\setlength{\parindent}{0pt}
+
+\title{\textbf{The maths behind the two notebooks}\\[4pt]
+\large \code{nufft_parameter_recovery.ipynb} and \code{hyperliquid_research.ipynb}}
+\author{Notes for Mark}
+\date{19 October 2026}
+
+\begin{document}
+\maketitle
+
+\begin{abstract}
+\noindent Part~I derives what the NUFFT notebook computes: the Fourier transform of a point process, why the
+amplitude and phase of a periodic schedule come out of it, what the null distribution of the power is, why
+scanning many frequencies needs a corrected threshold, where the ``feed comb'' comes from, and how clustering
+(bursts) changes all of it. Along the way it checks the notebook's numbers against closed-form predictions; two of
+those checks change how some of the notebook's findings should be read (\S\ref{sec:checks}).
+Part~II covers the Hyperliquid notebook: the lattice model for block gaps, the autocorrelation tests, the
+regression and quantile forecasts, the latency model, the hazard model and the event study.
+Part~III lists what changes when the Part~I analysis is moved onto the real \code{market_data_v2} data. No new analysis of real data is
+in here; the only new numbers are re-computations on the simulation.
+\end{abstract}
+
+\tableofcontents
+\newpage
+
+%======================================================================
+\part{The NUFFT parameter-recovery notebook}
+%======================================================================
+
+\section{The object: a point process with a periodic intensity}
+
+The data are event times $0\le t_1<t_2<\dots<t_N<T$ (trades, quote updates). A \emph{point process} is described by
+its \emph{intensity} $\lambda(t)$: the expected number of events in a short window $[t,t+\delta)$ is $\lambda(t)\,\delta$.
+A homogeneous Poisson process has constant $\lambda$; ``nothing is scheduled''.
+
+The notebook plants a schedule as a cosine modulation of the intensity:
+\begin{equation}\label{eq:intensity}
+  \lambda(t) \;=\; \lambda_0\bigl(1 + A\cos(2\pi f_0 t + \varphi)\bigr),\qquad f_0 = 1/P,\quad 0\le A\le 1 .
+\end{equation}
+\begin{itemize}
+  \item $\lambda_0$ is the mean rate (\code{BASE_RATE_HZ}$=200$/s),
+  \item $P$ the period (\code{TRUE_PERIOD_S}$=1$\,s), $f_0$ its frequency,
+  \item $A$ the modulation depth (\code{TRUE_MOD_A}$=0.4$): at the busiest phase the rate is $(1+A)\lambda_0$, at the quietest $(1-A)\lambda_0$,
+  \item $\varphi$ the phase (\code{TRUE_PHASE}$=1.10$\,rad): where in each cycle the activity peaks. The rate is highest when
+        $2\pi f_0 t + \varphi \equiv 0$, i.e.\ at $t \equiv -\varphi/(2\pi f_0) \pmod P$.
+\end{itemize}
+The three numbers to recover are $(P, A, \varphi)$.
+
+\subsection{Simulating it: thinning}
+\code{sim_periodic_poisson} uses the Lewis--Shedler thinning method. Since $\lambda(t)\le\lambda_{\max}=\lambda_0(1+A)$:
+\begin{enumerate}
+  \item draw a homogeneous Poisson process at rate $\lambda_{\max}$ (a Poisson number of uniform times on $[0,T)$);
+  \item keep each candidate time $t$ with probability $\lambda(t)/\lambda_{\max} = \dfrac{1+A\cos(2\pi f_0t+\varphi)}{1+A}$.
+\end{enumerate}
+Kept points form a Poisson process with intensity exactly $\lambda(t)$, because independent thinning of a Poisson
+process with retention probability $p(t)$ gives a Poisson process with intensity $\lambda_{\max}p(t)$.
+
+\section{The Fourier transform of a point process}
+
+\subsection{Definition}
+For events at $t_j$ with weights $w_j$ (here $w_j=1$, so we count events), the \emph{non-uniform discrete Fourier
+transform} (NUDFT) at frequency $f$ is
+\begin{equation}\label{eq:nudft}
+  X(f) \;=\; \sum_{j=1}^{N} w_j\, e^{-2\pi\ii f t_j}
+       \;=\; \underbrace{\sum_j w_j\cos(2\pi f t_j)}_{C(f)} \;-\; \ii\,\underbrace{\sum_j w_j\sin(2\pi f t_j)}_{S(f)} .
+\end{equation}
+Each event contributes a unit arrow (a \emph{phasor}) pointing at angle $-2\pi f t_j$. If events are spread evenly
+around the cycle of period $1/f$ the arrows cancel and $|X(f)|$ is small; if they bunch at one phase the arrows add up.
+
+\begin{note}
+\textbf{NUDFT vs NUFFT.} Equation~\eqref{eq:nudft} \emph{is} the statistic. A NUFFT (e.g.\ \code{finufft}) is a fast
+\emph{algorithm} that evaluates~\eqref{eq:nudft} at $M$ frequencies in $O(N\log N + M)$ operations to a chosen accuracy
+$\varepsilon$, instead of $O(NM)$ for the direct sum. It doesn't change the numbers. The notebook computes the sum
+directly (\code{hft_clock.ndft_power}). How a NUFFT does it is described in \S\ref{sec:grid}.
+\end{note}
+
+\subsection{Why the amplitude and phase come out}
+Take the expectation of~\eqref{eq:nudft} at the true frequency. For a Poisson process,
+$\E\sum_j g(t_j) = \int_0^T g(t)\lambda(t)\dd t$ (Campbell's theorem). With $g(t)=e^{-2\pi\ii f_0 t}$ and writing the
+cosine as $\tfrac12(e^{\ii\theta}+e^{-\ii\theta})$:
+\begin{align}
+  \E X(f_0) &= \int_0^T \lambda_0\Bigl[1 + \tfrac{A}{2}e^{\ii(2\pi f_0 t+\varphi)} + \tfrac{A}{2}e^{-\ii(2\pi f_0 t+\varphi)}\Bigr]e^{-2\pi\ii f_0 t}\dd t \notag\\
+           &= \lambda_0\!\int_0^T\! e^{-2\pi\ii f_0 t}\dd t \;+\; \frac{\lambda_0 A}{2}e^{\ii\varphi}\!\int_0^T\!\dd t
+              \;+\; \frac{\lambda_0 A}{2}e^{-\ii\varphi}\!\int_0^T\! e^{-4\pi\ii f_0 t}\dd t .
+\end{align}
+The first and third integrals are oscillating terms of size at most $1/(\pi f_0)$, which is negligible when the record
+holds many cycles ($f_0T\gg1$). The middle term grows with $T$. Since $\E N=\lambda_0 T$:
+\begin{equation}\label{eq:EX}
+  \boxed{\;\E X(f_0) \approx N\,\frac{A}{2}\,e^{\ii\varphi}\;}
+  \qquad\Longrightarrow\qquad
+  \hat A = \frac{2\,|X(f_0)|}{N},\qquad \hat\varphi = \arg X(f_0) = -\operatorname{atan2}(S,C)\bmod 2\pi .
+\end{equation}
+This is exactly \code{recover_at}: \code{amp_hat = 2*res/total} and \code{phase_hat = (-arctan2(s, c)) \% 2pi}.
+The quantity $R = |X(f_0)|/N\in[0,1]$ is the \emph{Rayleigh resultant} (the length of the average phasor), so $R=A/2$
+and $\hat A=2R$.
+
+\subsection{The normalised power and its null distribution}
+\code{ndft_power} returns
+\begin{equation}\label{eq:z}
+  z(f) = \frac{|X(f)|^2}{\sum_j w_j^2} \;=\; \frac{|X(f)|^2}{N} \;=\; N R(f)^2 \quad (w_j=1).
+\end{equation}
+\textbf{Null (no schedule, Poisson).} At a frequency with $fT\gg1$, $C(f)$ and $S(f)$ are sums of $N$ roughly
+independent terms with mean $\approx0$ and $\E\cos^2=\E\sin^2=\tfrac12$. By the central limit theorem they are
+approximately independent $\mathcal N(0,N/2)$. Hence
+\begin{equation}\label{eq:exp1}
+  \frac{|X|^2}{N/2} = \frac{C^2+S^2}{N/2}\sim\chi^2_2 \quad\Longrightarrow\quad z\sim \tfrac12\chi^2_2 = \mathrm{Exp}(1),
+  \qquad \Pr(z>x)=e^{-x}.
+\end{equation}
+That closed-form tail is why \code{rayleigh_test} can report \code{p = exp(-z)} without simulation. This is the
+\emph{Rayleigh test} of circular uniformity.
+
+\textbf{With a schedule.} From~\eqref{eq:EX}, $|X(f_0)|^2\approx N^2A^2/4$, so
+\begin{equation}\label{eq:zsig}
+  z(f_0)\approx \frac{N A^2}{4}.
+\end{equation}
+Check against Experiment~1: $N=360{,}242$, $A=0.4$ gives $z\approx14{,}410$; the notebook reports $14{,}350$.
+
+\subsection{How precise are $\hat A$ and $\hat\varphi$?}
+Around its mean, $X(f_0)$ has noise of variance $N/2$ in each of the two directions. Projecting onto the direction of
+the mean and onto the direction at right angles to it:
+\begin{equation}\label{eq:se}
+  \operatorname{se}(\hat A)\approx \frac{2}{N}\sqrt{\frac N2}=\sqrt{\frac 2N},\qquad
+  \operatorname{se}(\hat\varphi)\approx \frac{\sqrt{N/2}}{|X|} = \frac{1}{R\sqrt{2N}} = \frac{\sqrt2}{A\sqrt N}.
+\end{equation}
+For Experiment~1, $\operatorname{se}(\hat A)\approx0.0024$ and $\operatorname{se}(\hat\varphi)\approx0.006$\,rad. The
+observed errors ($0.0003$--$0.0008$ in $A$) fit that. The NUDFT \emph{phase} error of $0.118$\,rad is far larger, and
+comes from the next subsection, not from noise.
+
+\subsection{Frequency resolution, leakage, and the phase penalty for a slightly wrong frequency}\label{sec:leak}
+Evaluate $\E X$ at a frequency $f=f_0+\delta$ close to, but not equal to, the truth. Repeating the calculation above,
+the middle term becomes
+\begin{equation}\label{eq:dirichlet}
+  \E X(f_0+\delta)\approx \frac{\lambda_0A}{2}e^{\ii\varphi}\int_0^T e^{-2\pi\ii\delta t}\dd t
+  \;=\; N\frac A2\, e^{\ii\varphi}\; \underbrace{e^{-\ii\pi\delta T}}_{\text{phase drift}}\;\underbrace{\sinc(\delta T)}_{\text{leakage}},
+  \qquad \sinc(x)=\frac{\sin \pi x}{\pi x}.
+\end{equation}
+Three consequences:
+\begin{enumerate}
+  \item \textbf{Line width (resolution).} The peak has a $\sinc$ shape in frequency, falling to zero at $\delta=\pm1/T$.
+        So $1/T$ is the frequency resolution: $1/1800\approx5.6\times10^{-4}$\,Hz in the notebook. Two periods closer
+        than this in frequency can't be told apart.
+  \item \textbf{Sidelobes (leakage).} Away from the peak $|\sinc(\delta T)|\approx 1/(\pi|\delta| T)$. A strong line puts power into frequencies
+        many resolution cells away. The power sidelobes decay only like $1/(\pi\delta T)^2$.
+  \item \textbf{Phase drift.} If you estimate the phase at a slightly wrong frequency, the phase is biased by
+        $-\pi\delta T$. In Experiment~1 the NUDFT frequency estimate was off by $0.0021\%$, i.e.\ $\delta=2.1\times10^{-5}$\,Hz, which predicts a
+        phase bias of $\pi\cdot2.1\times10^{-5}\cdot1800 = 0.119$\,rad. The notebook shows $0.118$. The FFT's grid contains
+        exactly $1$\,Hz ($=1800/T$), so it had $\delta=0$ and no phase error.
+\end{enumerate}
+
+\begin{note}
+\textbf{Rule.} Scan frequencies at a spacing of at most $\sim\!1/(4T)$ (or refine around every candidate), and estimate
+the phase at a well-pinned frequency. If you name the period in advance, evaluate exactly there.
+\end{note}
+
+\section{Uniform grids, the FFT, and what a NUFFT does internally}\label{sec:grid}
+
+\subsection{Binning onto a grid}
+\code{grid_counts} histograms the events into $n=T/\Delta$ bins of width $\Delta=5$\,ms with centres $\tau_k$, giving counts $c_k$.
+The ordinary DFT of the counts at the FFT frequencies $f_m=m/(n\Delta)=m/T$ is
+\begin{equation}
+  \tilde X(f_m) = \sum_{k=0}^{n-1} c_k\, e^{-2\pi\ii f_m \tau_k}
+               = \sum_j e^{-2\pi\ii f_m \tau_{k(j)}},
+\end{equation}
+so it is the NUDFT~\eqref{eq:nudft} with every event moved to the centre of its bin. Write $t_j=\tau_{k(j)}+u_j$ with
+offsets $u_j\in[-\Delta/2,\Delta/2)$. If the offsets are spread uniformly, which is true for any smooth process,
+\begin{equation}\label{eq:sincgrid}
+  \E\bigl[e^{+2\pi\ii f u}\bigr] = \frac1\Delta\int_{-\Delta/2}^{\Delta/2}e^{2\pi\ii f u}\dd u = \sinc(f\Delta)
+  \quad\Longrightarrow\quad \tilde X(f)\approx \sinc(f\Delta)\,X(f).
+\end{equation}
+Binning \emph{attenuates} a line at frequency $f$ by $\sinc(f\Delta)$. At $f=1$\,Hz and $\Delta=5$\,ms that is $0.99996$, so it doesn't matter;
+at $f$ near $1/\Delta$ it does. Three more facts about the grid:
+\begin{itemize}
+  \item \textbf{Nyquist.} A grid of spacing $\Delta$ can represent frequencies only up to $1/(2\Delta)=100$\,Hz.
+        Power above that \emph{aliases} back to lower frequencies.
+  \item \textbf{FFT frequencies.} \code{np.fft.rfft} returns $\tilde X$ only at $f_m=m/T$, exactly one resolution cell apart.
+        That's the minimum sampling that keeps all the information, but a line between two $f_m$ is
+        attenuated by up to $\sinc(1/2)=0.64$ in amplitude ($0.41$ in power). Zero-padding the counts samples in between.
+  \item \textbf{Units.} \code{fft_spectrum} returns $|\tilde X|^2$ unnormalised, and \code{ndft_power} returns $z=|X|^2/N$. Their
+        heights aren't comparable; only the locations and the recovered $(A,\varphi)$ are.
+\end{itemize}
+
+\subsection{Gridding + deconvolution (\texorpdfstring{\texttt{scan\_band}}{scan_band}) and the real NUFFT}
+\code{hft_clock.scan_band} bins at $\Delta = P_{\min}/20$, runs an FFT, and divides by $\sinc(f\Delta)$ to undo~\eqref{eq:sincgrid}:
+\begin{equation}
+  z(f_m) = \frac{\bigl|\tilde X(f_m)/\sinc(f_m\Delta)\bigr|^2}{N}.
+\end{equation}
+This is the crudest member of the NUFFT family. A proper type-1 NUFFT:
+\begin{enumerate}
+  \item \emph{spreads} each event onto an oversampled grid (typically $2\times$) with a smooth, compact kernel $\phi$ (Gaussian, Kaiser--Bessel or ``exponential of semicircle'') instead of a box;
+  \item FFTs the grid;
+  \item divides by the kernel's Fourier transform $\hat\phi(f)$.
+\end{enumerate}
+The smooth kernel makes the aliasing error decay exponentially with kernel width, so accuracy is controlled ($\varepsilon\sim10^{-6}$ to $10^{-12}$),
+whereas a box kernel only gives the $\sinc$ correction on average.
+
+\begin{incode}
+\code{verify_grid} recomputes the exact sum at a few frequencies to check the gridded scan. Ratios near 1 mean the gridding error is negligible.
+\end{incode}
+
+\section{Scanning many frequencies: the multiplicity threshold}\label{sec:mult}
+
+A scan over the band $[f_{\mathrm{lo}},f_{\mathrm{hi}}]$ looks at about
+\begin{equation}
+  M \approx T\,(f_{\mathrm{hi}}-f_{\mathrm{lo}})
+\end{equation}
+\emph{independent} frequencies, one per resolution cell. Under the null each $z\sim\mathrm{Exp}(1)$, so the largest of $M$ independent ones satisfies
+\begin{equation}
+  \Pr\Bigl(\max_{m\le M} z_m > x\Bigr) = 1-(1-e^{-x})^M \approx M e^{-x}.
+\end{equation}
+Setting this equal to the family-wise level $\alpha$ gives the threshold
+\begin{equation}\label{eq:thresh}
+  z^\ast = \ln\frac{M}{\alpha}.
+\end{equation}
+In Experiment~4 the band is $0.2$--$20$\,Hz over $T=1800$\,s: $M=35{,}640$, $z^\ast=\ln(3.56\times10^6)=15.1$, which is \code{z_thresh_01}.
+On real data spanning a day this grows only logarithmically, but the \emph{typical} null maximum is about $\ln M$, so ``look at that spike'' is
+worthless without the line drawn.
+
+\textbf{Named candidates} (\code{candidate_test}) avoid this: with $M\approx10$ pre-named periods, Bonferroni multiplies each $p$ by 10, and that's all.
+
+\section{Bursts: why the Exp(1) null breaks}\label{sec:bursts}
+
+Real order flow is clustered: one event triggers more. \code{add_bursts} uses a Neyman--Scott cluster process. Each
+\emph{parent} spawns $C\sim\mathrm{Poisson}(m)$ children ($m$=\code{BURST_CHILDREN}$=2.5$) at delays $D\sim\mathrm{Exp}$ with mean
+$d$ (\code{BURST_DECAY_S}$=20$\,ms).
+
+\subsection{Variance inflation of the spectrum}
+Parents are Poisson, so $X(f)$ is a sum of independent \emph{cluster} phasors
+$Y = e^{-2\pi\ii f t_p}\bigl(1+\sum_{i=1}^{C}e^{-2\pi\ii f D_i}\bigr)$. Let
+\begin{equation}
+  \psi(f) = \E\, e^{-2\pi\ii f D} = \frac{1}{1+2\pi\ii f d}
+\end{equation}
+be the characteristic function of the delay. Using $\E C=m$ and $\E C(C-1)=m^2$ (Poisson),
+\begin{equation}
+  \E|1+\textstyle\sum_i e^{-2\pi\ii fD_i}|^2 = 1 + m + 2m\,\mathrm{Re}\,\psi(f) + m^2|\psi(f)|^2 .
+\end{equation}
+Dividing by the mean cluster size $1+m$ (because $N$ counts children too) gives the factor by which the null variance of $X$ exceeds $N$:
+\begin{equation}\label{eq:kappa}
+  \boxed{\;\kappa(f) = \frac{1+m+2m\,\mathrm{Re}\,\psi(f)+m^2|\psi(f)|^2}{1+m},\qquad
+  z(f)\;\sim\;\kappa(f)\cdot\mathrm{Exp}(1)\ \text{under the null.}\;}
+\end{equation}
+With the notebook's knobs:
+\begin{center}
+\begin{tabular}{lcccc}
+\toprule
+$f$ (Hz) & $\to0$ & $1$ & $4$ & $20$\\
+\midrule
+$\kappa(f)$ & $4.21$ & $4.16$ & $3.57$ & $1.44$\\
+\bottomrule
+\end{tabular}
+\end{center}
+So at low frequencies the null spectrum is about four times taller than Exp(1) says. The analytic $p$-value and the
+threshold~\eqref{eq:thresh} are \emph{anticonservative} there by roughly that factor. That's why the null in Experiment~4
+throws its biggest false peak at the \emph{long-period} end of the band ($P=4.11$\,s, $z=33.8$). At that end of the band the typical null maximum is of order $\kappa\ln M\approx 4.2\times10.5\approx44$,
+so $33.8$ is an unremarkable draw.
+
+\subsection{The cure: block permutation}
+\code{shuffle_null} keeps the empirical gaps between events but permutes \emph{blocks} of consecutive gaps. Within a block the
+clustering survives, so $\kappa$ is preserved; across blocks the alignment to the wall clock is destroyed, so the
+schedule is removed. Its weakness: clusters longer than the block get cut, and blocks much longer than a cluster make the null too
+easy to match. Hence the block-length sweep in \code{run_analysis}.
+
+\subsection{Bursts also bias the phase and amplitude (a deterministic effect)}
+Children inherit their parent's phase but arrive $D$ later. At the signal frequency the expected phasor gets multiplied by
+\begin{equation}\label{eq:burstbias}
+  \gamma(f) = \frac{1+m\,\psi(f)}{1+m},\qquad
+  \hat A \to A\,|\gamma(f_0)|,\qquad \hat\varphi\to\varphi+\arg\gamma(f_0).
+\end{equation}
+Here $\arg\gamma<0$, so $\hat\varphi$ comes out lower by $|\arg\gamma|$. That means the activity peaks $|\arg\gamma|/(2\pi f_0)$ seconds \emph{later} in the cycle, and the amplitude is shrunk. That's not estimation error; the
+simulated flow really does peak later than the parents' schedule. Table~\ref{tab:sweep} compares this prediction with Experiment~3's ``phase error at the named
+candidate'':
+\begin{table}[h]\centering
+\caption{Experiment 3 phase errors vs the closed-form burst bias $|\arg\gamma(1/P)|$ from~\eqref{eq:burstbias}.}\label{tab:sweep}
+\begin{tabular}{rrrrr}
+\toprule
+$P$ (s) & $f_0$ (Hz) & predicted $|\arg\gamma|$ (rad) & notebook \code{nu_pherr} (rad) & $|\gamma|$ (amplitude factor)\\
+\midrule
+0.08 & 12.50 & 0.582 & 0.586 & 0.589\\
+0.15 &  6.67 & 0.462 & 0.484 & 0.788\\
+0.25 &  4.00 & 0.323 & 0.330 & 0.903\\
+0.50 &  2.00 & 0.175 & 0.171 & 0.972\\
+1.00 &  1.00 & 0.089 & 0.095 & 0.993\\
+2.00 &  0.50 & 0.045 & 0.049 & 0.998\\
+3.00 &  0.33 & 0.030 & 0.022 & 0.999\\
+\bottomrule
+\end{tabular}
+\end{table}
+The rising phase error at short periods is fully explained by $\arg\gamma$. The NUDFT and FFT agree with each other (and with the prediction) because
+they're estimating the same, shifted, quantity. Likewise, Experiment~2's $\hat A = 0.3855$ and $\hat\varphi = 1.021$ match the prediction
+$A\,\tfrac{N_{\mathrm{HL}}}{N}|\gamma(1)| = 0.385$ and $\varphi+\arg\gamma(1)=1.011$ to within one standard error. (The Binance leg dilutes the amplitude, see \S\ref{sec:checks}.)
+
+\section{The feed comb}\label{sec:comb}
+
+\subsection{Why a lattice shows up as a comb}
+Suppose events sit on a lattice $t=n\Delta_B+\epsilon_n$ (Binance's 100\,ms cadence, or Hyperliquid's $\sim\!67$\,ms blocks), with
+small independent jitter $\epsilon_n$. Ignoring jitter, the transform of a full lattice is
+\begin{equation}
+  \sum_{n} e^{-2\pi\ii f n\Delta_B} \;\propto\; \sum_{h\in\mathbb Z}\delta\!\Bigl(f-\frac{h}{\Delta_B}\Bigr)
+  \qquad\text{(Poisson summation)},
+\end{equation}
+a \emph{comb} of lines at $f=h/\Delta_B$, i.e.\ periods $\Delta_B, \Delta_B/2,\Delta_B/3,\dots$ With $N_B$ lattice events (all present, or
+thinned at random) and jitter characteristic function $\phi_\epsilon$:
+\begin{equation}\label{eq:comb}
+  \E X_B\!\left(\tfrac{h}{\Delta_B}\right)\approx N_B\,\phi_\epsilon\!\left(\tfrac{h}{\Delta_B}\right),\qquad
+  z_{\mathrm{comb}}(h)\approx \frac{N_B^2\,|\phi_\epsilon(h/\Delta_B)|^2}{N}.
+\end{equation}
+The comb's power scales like $N_B^2/N$, the square of the number of lattice events, and it carries no information about traders.
+Jitter only damps the high harmonics:
+\begin{itemize}
+  \item exponential jitter of scale $s$: $|\phi_\epsilon(f)|=1/\sqrt{1+(2\pi fs)^2}$; for $s=0.3$\,ms at 20\,Hz that's $0.9993$, so no damping;
+  \item Gaussian jitter of s.d.\ $\sigma$: $|\phi_\epsilon(f)|^2=e^{-4\pi^2\sigma^2f^2}$.
+\end{itemize}
+
+\subsection{Comb exclusion}
+\code{comb_keep_mask} masks every period within $\pm3\%$ of $\Delta_B/h$ for $h=1,\dots,25$. That's crude but honest. Anything at, or harmonically
+related to, the feed's own clock is presumed to be the feed.
+
+\section{Local contrast, phase stability, and why scan-and-select fools them}\label{sec:select}
+
+\textbf{Local contrast} (\code{local_contrast}) is the peak power over the median power of neighbours within $\pm25\%$ in frequency. It is immune to
+a broad slope in the spectrum (such as $\kappa(f)$ above).
+
+\textbf{Phase stability} (\code{stability_check}) splits the record into $W=6$ windows, estimates $R_w$ and phase $\theta_w$ in each, and reports
+\begin{equation}
+  \text{phase agreement} = \frac{\bigl|\sum_w R_w e^{\ii\theta_w}\bigr|}{\sum_w R_w}\in[0,1].
+\end{equation}
+
+\textbf{Why selection fools both.} The full-record transform is the \emph{sum} of the window transforms, $X=\sum_w X_w$. Picking the frequency that maximises
+$|X|$ out of $35{,}640$ therefore picks a frequency where the window phasors \emph{happen} to point the same way, so phase agreement comes out high \emph{by construction}.
+Likewise the selected peak is, by construction, taller than its neighbours. The tests are still useful for a period named in advance;
+they are not independent confirmations of a period you selected. What survives is \emph{effect size}. The planted schedule had $z\approx21{,}700$ versus $34$ for the
+selected null peak.
+
+\section{Checks on the notebook's numbers}\label{sec:checks}
+
+I re-ran the simulation (same seed and draw order) to check the closed-form predictions above. Two results change the interpretation of the notebook's findings.
+
+\begin{warn}
+\textbf{1. The ``feed-comb trap'' in Experiment 2 is mainly a scan-grid artefact.}
+\code{nudft_spectrum} uses \code{N_SCAN_FREQ = 4000} frequencies over $0.2$--$20$\,Hz, a step of $0.00495$\,Hz, which is
+$8.9$ resolution cells. The true $1$\,Hz line is only one cell wide, so the scan steps over it:
+\begin{center}
+\begin{tabular}{lrrr}
+\toprule
+line & nearest scan frequency (offset in cells) & $z$ at scan point & exact $z$ at the line\\
+\midrule
+schedule, 1\,Hz      & $1.00210$ ($+3.78$) & 54.6  & \textbf{21{,}727}\\
+comb, 10\,Hz         & $9.99850$ ($-2.70$) & 2.2   & 530\\
+comb, 20\,Hz (=$f_{\mathrm{hi}}$) & $20.00000$ ($0.00$) & 568 & 568\\
+\bottomrule
+\end{tabular}
+\end{center}
+The comb ``wins'' only because $20$\,Hz is the band \emph{endpoint}, which \code{linspace} hits exactly. On a fine enough grid the schedule is about $40\times$
+taller than the comb. The FFT didn't fall into this because its frequencies $m/T$ include $1$\,Hz exactly.
+Experiment~3 uses 1500 frequencies per band, and its offsets grow as $1/P$ (9.0 cells at $P=80$\,ms, 2.9 at 250\,ms). That is the likely cause of
+the NUDFT period misses at those two periods. I haven't re-run those two with a finer grid, so I'm stating it as likely rather than shown.
+\emph{Fix:} step $\le 1/(4T)$, or refine around the top few candidates, and keep band edges off comb harmonics.
+\end{warn}
+
+\begin{warn}
+\textbf{2. The Binance leg isn't 55\% of events; it's 3.1\%, and it carries no schedule.}
+\code{sim_hl_binance} sets the fire probability to $\code{n_bin_budget}/\code{grid.size}\times(1+A\cos\cdot)$ $=198{,}000/18{,}000\times(\dots)=11\times(\dots)$, which is then clipped to 1.
+Every one of the $18{,}000$ grid points fires, regardless of the schedule. So the merged stream is $566{,}755$ bursty HL events plus a \emph{full} $100$\,ms lattice of
+$18{,}000$ unmodulated events (\code{BIN_SHARE} isn't realised). Prediction~\eqref{eq:comb}: $z_{\mathrm{comb}}\approx18{,}000^2/584{,}755=554$, matching the
+$530$--$568$ observed. The lattice also dilutes $\hat A$ by $566{,}755/584{,}755=0.969$.
+\end{warn}
+
+\begin{note}
+Neither issue affects the core methodological points: name candidates in advance, mask the comb, judge by effect size, and use a burst-preserving null. They do change two
+headline sentences. ``The NUDFT is captured by the comb'' should read ``a coarse frequency grid can step over a narrow line''. ``The comb drags the NUDFT
+peak near the feed scale'' needs re-testing with a fine grid.
+\end{note}
+
+%======================================================================
+\part{The Hyperliquid block-timing notebook}
+%======================================================================
+
+\section{Setup and notation}
+\begin{itemize}
+  \item Latent HL blocks are committed at times $b_1<b_2<\dots$ with \emph{block intervals} $\beta_i=b_{i}-b_{i-1}$. The feed has no block height, so
+        $b_i$ is never observed directly.
+  \item A block is \emph{visible} if at least one of the 6 instruments printed an l1 (bbo) update or trade with that \code{ts_exch} (ms). Visible blocks
+        $t_1<t_2<\dots$ are a \emph{thinned} subset of the $b_i$.
+  \item The \emph{observed gap} $g_n=t_n-t_{n-1}$ is the sum of $k_n\ge1$ consecutive block intervals ($k_n-1$ invisible blocks in between):
+        \begin{equation}\label{eq:gapsum} g_n = \sum_{i=1}^{k_n}\beta_{(n,i)} . \end{equation}
+  \item Gaps that span a websocket reconnect are dropped; trade replays on resubscribe are removed.
+  \item Train/test split: the first 60\% of the record by time is train (\code{TRAIN_FRAC}). Everything is fit on train and scored on test.
+\end{itemize}
+
+\section{Q1: what distribution do gaps follow?}
+
+\subsection{Discretised models}
+Timestamps are integer ms, so every model is turned into a probability mass function (pmf) on $g\in\{1,\dots,G_{\max}\}$ ($G_{\max}=600$) by
+\begin{equation}
+  p(g)\propto F(g+\tfrac12)-F(g-\tfrac12)
+\end{equation}
+for a continuous cdf $F$ (\code{_disc}). The models:
+\begin{itemize}
+  \item \textbf{M0 exponential}, $F(x)=1-e^{-x/s}$: blocks arrive as a Poisson process, the ``no clock'' null.
+  \item \textbf{M1 shifted lognormal}: $\log(g-c)\sim\mathcal N(\mu,\sigma^2)$, a smooth one-humped duration.
+  \item \textbf{M2a rigid lattice}: one block $\beta\sim\mathcal N(\mu,\sigma^2)$; gap $=$ sum of $k$ blocks, with free weights $w_k$.
+  \item \textbf{M2b lattice with slow blocks}: one block is a two-part mixture
+        \begin{equation}\label{eq:blockpmf}
+          b(\beta) = \pi\,\mathcal N(\beta;\mu,\sigma^2) + (1-\pi)\,\mathrm{Gamma}(\beta-c;\,a,\,\theta),
+        \end{equation}
+        i.e.\ a sharp clock component plus a spread-out component for blocks that run long or short.
+\end{itemize}
+
+\subsection{From one block to a gap: convolution}
+If the $k$ block intervals in~\eqref{eq:gapsum} are independent with pmf $b$, the pmf of their sum is the $k$-fold convolution $b^{*k}$
+($b^{*1}=b$, $b^{*k}=b^{*(k-1)}*b$, computed with \code{np.convolve}). Mixing over $k$:
+\begin{equation}\label{eq:lattice}
+  p(g) = \sum_{k=1}^{K} w_k\, b^{*k}(g),\qquad w_k = \frac{e^{\eta_k}}{\sum_{\ell}e^{\eta_\ell}}\quad(K=8).
+\end{equation}
+The mixture weights use a softmax and $\pi$ a logistic (\code{expit}); $\sigma$, $a$ and $\theta$ are fitted on the log scale. That makes every parameter unconstrained, so
+L-BFGS can be used.
+
+\begin{warn}
+\textbf{Assumption:} $k$ is independent of the block lengths. It isn't exactly: a long block has more time to collect a visible change. So the $w_k$ are
+descriptive, not structural.
+\end{warn}
+
+\subsection{Maximum likelihood on a histogram}
+With $h_g$ the number of train gaps equal to $g$, the log-likelihood of i.i.d.\ gaps is multinomial:
+\begin{equation}
+  \ell(\theta) = \sum_{g} h_g \log p_\theta(g),\qquad \hat\theta=\argmax_\theta \ell(\theta).
+\end{equation}
+Fitting on the histogram is exact (not an approximation) and makes the cost independent of $n$. The notebook reports the test negative log-likelihood per observation,
+$-\ell_{\text{test}}(\hat\theta)/n_{\text{test}}$, so models are compared out of sample.
+
+\subsection{Goodness of fit: Pearson $\chi^2$}
+On test, the expected count in bin $g$ is $E_g=n_{\text{test}}\,p_{\hat\theta}(g)$. Bins are merged left to right until each merged bin has $E\ge5$, and then
+\begin{equation}
+  \chi^2=\sum_{\text{bins}}\frac{(O-E)^2}{E},\qquad \text{dof}= \#\text{bins}-1-\#\text{params}.
+\end{equation}
+With $n\approx80{,}000$, any small misfit gives $p\approx0$. Read $\chi^2/\text{dof}$ and the maximum cdf gap as \emph{sizes} of misfit.
+
+\subsection{Derived quantities}
+\begin{itemize}
+  \item \textbf{Posterior number of blocks in a gap.} Bayes on~\eqref{eq:lattice}:
+        $\Pr(k=1\mid g)=w_1 b(g)\big/p(g)$. The single-block cut \code{SINGLE_MAX} is the largest $g$ above the mode at which this is still $\ge0.9$ ($99$\,ms).
+  \item \textbf{Mean block} $\bar\beta=\sum_\beta \beta\,b(\beta)$ ($68.1$\,ms). Blocks per second $=1000/\bar\beta$.
+  \item \textbf{Share of blocks visible} $\approx \#\text{visible}\big/\bigl((t_{\max}-t_{\min})/\bar\beta\bigr)$.
+  \item \textbf{Per instrument}, $k\approx\mathrm{round}(g/\bar\beta)$: how many blocks apart that instrument's updates are.
+\end{itemize}
+
+\section{Q2: are gaps independent?}
+
+\subsection{ACF with gaps, and Ljung--Box}
+For a series $x_n$ with mean $\bar x$, the lag-$k$ autocorrelation is
+\begin{equation}
+  \hat\rho(k)=\frac{\frac1{|\mathcal P_k|}\sum_{(n,n+k)\in\mathcal P_k}(x_n-\bar x)(x_{n+k}-\bar x)}{\frac1{n}\sum_n(x_n-\bar x)^2},
+\end{equation}
+where $\mathcal P_k$ is the set of pairs where both values exist (\code{acf_nan}). That's how ``single-block gap'' works: non-single gaps are set to NaN, so they
+drop out pair by pair without shifting the series. Under $H_0$ (white noise), $\hat\rho(k)\approx\mathcal N(0,1/n)$, giving the $\pm1.96/\sqrt n$ band. Ljung--Box combines lags $1..L$:
+\begin{equation}
+  Q(L)=n(n+2)\sum_{k=1}^{L}\frac{\hat\rho(k)^2}{n-k}\ \sim\ \chi^2_L\quad\text{under }H_0.
+\end{equation}
+At $n\approx200{,}000$ the band is $\pm0.004$, so tiny $\rho$ is ``significant''. Read magnitudes.
+
+\subsection{Three series, because raw gaps mix two processes}
+\begin{itemize}
+  \item \textbf{raw gap} $g_n$: clock and visibility mixed;
+  \item \textbf{$k_n=\mathrm{round}(g_n/\bar\beta)$}: visibility alone (bursty periods have many visible blocks in a row, giving positive $\rho$);
+  \item \textbf{single-block gap}: $g_n$ if $g_n\le99$, else NaN; this is the clock alone.
+\end{itemize}
+
+\subsection{What would ms rounding alone do?}
+Write the recorded time $t_n=t_n^\ast+e_n$ with rounding error $e_n\sim U(-\tfrac12,\tfrac12)$ ms, independent across $n$, $\Var e=1/12$. Then
+$g_n=g_n^\ast+e_n-e_{n-1}$, so if the true gaps are uncorrelated:
+\begin{equation}
+  \Cov(g_n,g_{n+1}) = \Cov(e_n-e_{n-1},\,e_{n+1}-e_n) = -\Var(e) \quad\Longrightarrow\quad
+  \rho(1)\approx-\frac{1/12}{\Var(g)}.
+\end{equation}
+With the notebook's single-block $\Var(g)$ (tens of ms$^2$) this is $\approx-0.001$. The observed $-0.20$ is a property of the clock, not of rounding.
+
+\subsection{Interpreting $\rho(1)=-0.2$: free-running vs phase-locked clock}
+Two simple models bracket it:
+\begin{itemize}
+  \item \textbf{Free-running}: each block takes $\mu+\xi_n$ after the last, $\xi$ i.i.d. Gaps are i.i.d., so $\rho(1)=0$.
+  \item \textbf{Phase-locked with jitter}: block $n$ is scheduled at $n\mu$ but lands at $n\mu+e_n$ with $e_n$ i.i.d. Then $g_n=\mu+e_n-e_{n-1}$ and, as above,
+        $\rho(1)=-\Var(e)/(2\Var(e))=-\tfrac12$, with $\rho(k)=0$ for $k\ge2$.
+\end{itemize}
+A mixture of the two (some catch-up toward a schedule) gives $-\tfrac12<\rho(1)<0$. The observed $-0.2$ and the table ``prev $\le55\Rightarrow$ next median 73'' are consistent with
+partial catch-up. This is a description, not a test of mechanism.
+
+\section{Q3: does activity change timing? Mann--Whitney $U$}
+Split blocks into ``high'' (activity above the train 80th percentile) and ``low''. With samples $Y^{\text{hi}}$ and $Y^{\text{lo}}$ of the next gap,
+\begin{equation}
+  U=\sum_{i}\sum_{j}\Bigl[\mathbb 1(Y^{\text{hi}}_i>Y^{\text{lo}}_j)+\tfrac12\mathbb 1(Y^{\text{hi}}_i=Y^{\text{lo}}_j)\Bigr],\qquad
+  \text{AUC}=\frac{U}{n_{\text{hi}}n_{\text{lo}}}=\Pr(Y^{\text{hi}}>Y^{\text{lo}}).
+\end{equation}
+$H_0$ (same distribution) gives AUC $=\tfrac12$. The notebook also reports the median difference with a 300-draw bootstrap CI. Values are integer ms, so ties are common;
+SciPy's $U$ test corrects for ties. The single-block-only target conditions on the next gap being short, so it describes the clock rather than giving a forecast.
+
+\section{Q4: do lags predict the next gap? OLS + HAC Wald}
+Regress $y_n=\log g_{n+1}$ on $x_n=(1,\log g_n,\dots,\log g_{n-9})$:
+\begin{equation}
+  y_n = x_n^\top\beta + u_n,\qquad \hat\beta=(X^\top X)^{-1}X^\top y .
+\end{equation}
+\textbf{HAC covariance.} The errors $u_n$ are autocorrelated and heteroskedastic, so the usual $\hat\sigma^2(X^\top X)^{-1}$ is wrong. Newey--West uses
+\begin{equation}
+  \hat V = (X^\top X)^{-1}\hat S(X^\top X)^{-1},\quad
+  \hat S=\sum_{|\ell|\le L}\Bigl(1-\tfrac{|\ell|}{L+1}\Bigr)\sum_n \hat u_n\hat u_{n-\ell}\,x_nx_{n-\ell}^\top,\quad L=20 .
+\end{equation}
+\textbf{Wald test} of $H_0: R\beta=0$, where $R$ picks the tested coefficients ($q$ of them):
+\begin{equation}
+  W=(R\hat\beta)^\top(R\hat VR^\top)^{-1}(R\hat\beta)\ \dot\sim\ \chi^2_q,\qquad F=W/q .
+\end{equation}
+\textbf{Out-of-sample $R^2$} compares the test-set squared error with that of the \emph{train} mean:
+$R^2_{\text{OOS}}=1-\sum_{\text{test}}(y-\hat y)^2\big/\sum_{\text{test}}(y-\bar y_{\text{train}})^2$. It can be negative.
+
+\section{Features and the truncation test}
+Every feature at block $n$ must be a function of data with timestamp $\le t_n$ (\emph{point-in-time}). The truncation test checks this mechanically. For a cut $c$:
+\begin{equation}
+  F_n(\mathcal D)=F_n(\mathcal D_{\le c})\quad\text{for every } n \text{ with } t_n\le c,
+\end{equation}
+where $\mathcal D_{\le c}$ deletes every event after $c$. Any feature that peeks forward fails this at some cut. Window counts use half-open windows $(a,b]$
+via \code{searchsorted}, so an event exactly at $t_n$ counts as known at $t_n$.
+
+\section{Q5: forecasting within an interval, with latency}
+
+\subsection{Latency model}
+Let $L_m\ge0$ be the delay before block $m$ is known to us. Block $n$ is usable only once it \emph{and every earlier block} is known, so the decision time is
+\begin{equation}
+  K_n=\max_{m\le n}\,(t_m+L_m)\qquad(\text{prefix max, }\code{np.maximum.accumulate}).
+\end{equation}
+\textbf{Staleness} is $K_n-t_n$. The \textbf{target} is the residual wait, in exchange time, until the first visible block after we know about block $n$:
+\begin{equation}
+  y_n = t_{j(n)}-K_n,\qquad j(n)=\min\{j: t_j>K_n\}.
+\end{equation}
+With $L\approx0$ this is just the next gap. Binance features at $K_n$ use only Binance events whose own known time (their $t$ plus latency) is $\le K_n$.
+
+Scenarios: (i) $L\sim\mathcal N(0.5,\,0.05^2)$\,ms, clipped at 0; (ii) measured $L_m=\max(\code{ts_recv})-t_m$ over the block's messages.
+
+\subsection{Why 0.5\,ms end-to-end is ruled out by the data}
+Both venues are stamped by the same VM clock. For a message, $\code{recv}-\code{exch}=L+\delta_{\text{venue}}$, where $\delta$ is the VM clock's offset from that venue's
+clock. Since $L\ge0$, $\min(\code{recv}-\code{exch})\ge\delta$. Observed minima: HL $\approx197$\,ms, Binance $\approx51$\,ms. If HL's $L$ were $0.5$\,ms, the VM would
+be $\delta\approx196$\,ms ahead of HL. Unless HL's and Binance's clocks disagree by about $150$\,ms, Binance latency would then be negative. So $L_{\text{HL}}$ is about
+$150$--$280$\,ms, unless the two exchange clocks are far apart.
+
+\subsection{Quantile forecasts and the pinball loss}
+For a level $\tau\in(0,1)$, the \emph{pinball} (check) loss of a forecast $q$ for outcome $y$ is
+\begin{equation}
+  \rho_\tau(y-q)=\max\bigl(\tau(y-q),\,(\tau-1)(y-q)\bigr).
+\end{equation}
+Its expected value is minimised by the $\tau$-quantile of $y$: the derivative in $q$ is $\Pr(y<q)-\tau$, which is zero at $q=F^{-1}(\tau)$. So fitting a model by minimising
+pinball loss gives a conditional quantile. The notebook fits gradient-boosted trees (\code{HistGradientBoostingRegressor}, \code{loss="quantile"}) for
+$\tau\in\{0.1,0.5,0.9\}$. It sorts the three predictions to stop the quantiles crossing, and $[q_{0.1},q_{0.9}]$ is the 80\% interval.
+
+\textbf{Metrics.} With $\bar L_F$ the mean pinball loss over the three $\tau$ for feature set $F$:
+\begin{equation}
+  \text{skill}_F = 1-\frac{\bar L_F}{\bar L_{F_0}},\qquad
+  \text{gain}_{F_j} = \frac{\bar L_{F_{j-1}}-\bar L_{F_j}}{\bar L_{F_0}},
+\end{equation}
+where $F_0$ predicts the unconditional train quantiles. Also reported: coverage $=\Pr(q_{0.1}\le y\le q_{0.9})$ (target 0.8), median width, and MAE of $q_{0.5}$.
+
+\subsection{Moving-block bootstrap CI}
+Per-observation loss differences $d_n$ are autocorrelated, so the i.i.d.\ bootstrap would understate uncertainty. The moving-block bootstrap resamples contiguous blocks
+of length $\ell=500$ (random starts) until $n$ values are drawn, recomputes $\bar d$, repeats 400 times, and takes the 2.5/97.5 percentiles.
+It is valid if dependence dies out well within $\ell$ observations.
+
+\section{Binance inside HL's gaps}
+
+\subsection{Discrete-time hazard}
+Cut each gap into $\Delta=10$\,ms steps $e=0,10,20,\dots$ (up to 600\,ms). The hazard is
+\begin{equation}
+  h(e\mid x)=\Pr\bigl(G\in(e,e+\Delta]\ \big|\ G>e,\ x\bigr).
+\end{equation}
+A gap that ends in step $J$ contributes $\prod_{e<J}(1-h(e))\cdot h(J)$ to the likelihood. That is exactly a product of independent Bernoulli terms, one per
+(gap, step) row with outcome 1 only in the final step (gaps longer than 600\,ms are censored: all their rows are 0). So any binary classifier fitted on those rows estimates $h$, and the row-wise log-loss is the
+negative log-likelihood. Model A uses HL information at block $n$ plus elapsed time $e$; model B adds Binance activity since block $n$ and in the last 20\,ms. The gain is
+$\Delta\text{LL}=\text{LL}_A-\text{LL}_B$, bootstrapped over gaps.
+
+\subsection{Clock test}
+Spearman's $\rho_S$ is the Pearson correlation of ranks, so it tests a monotone association. It is computed between Binance updates in the first 40\,ms after block $n$ and the next gap, among single-block next gaps only.
+
+\subsection{Lead profile and within-gap predictability}
+For consecutive HL updates $a\to b$ of one instrument, $\Delta_{\text{HL}}$ is the HL log-mid change. For shift $s$:
+\begin{equation}
+  c(s)=\operatorname{corr}\Bigl(\Delta_{\text{HL}},\ \log m^{\text{BN}}(t_b+s)-\log m^{\text{BN}}(t_a+s)\Bigr).
+\end{equation}
+A peak at $s<0$ means Binance moves first. The peak location \emph{includes} any HL-to-Binance clock offset.
+\textbf{Within-gap:} regress $\Delta_{\text{HL}}$ on the Binance return over $(t_a,\,t_b-\delta]$, known $\delta$\,ms before block $b$, without intercept on train. Then
+$R^2_{\text{OOS}}=1-\sum(\Delta_{\text{HL}}-\hat b\,r)^2/\sum\Delta_{\text{HL}}^2$ is measured against a zero forecast.
+
+\subsection{Event study}
+A Binance \emph{jump} at $\tau$ is an update whose 50\,ms log-mid return is in the top 0.5\% for that pair, keeping the first in any 2\,s stretch. For each jump with sign
+$s_\tau$, both mids are sampled on $\tau+u$, $u\in[-1000,2000]$\,ms:
+\begin{equation}
+  \Pi(u)=\frac1{J}\sum_\tau s_\tau\cdot10^4\bigl[\log m(\tau+u)-\log m(\tau-1000)\bigr]\quad\text{(signed bps)},
+\end{equation}
+with $t_{50}=\min\{u\ge-200:\Pi(u)\ge\tfrac12\Pi(2000)\}$, and lag $=t_{50}^{\text{HL}}-t_{50}^{\text{BN}}$. HL can only move at its own blocks, so its $\Pi$ is a staircase
+averaged over events. The jump threshold is a quantile of the same sample, so the event count is fixed by construction.
+
+%======================================================================
+\part{Moving the NUFFT analysis onto the real data}
+%======================================================================
+
+This is what the maths above implies for the next step; no analysis is done here.
+
+\begin{enumerate}
+  \item \textbf{The comb to mask is HL's block clock, not Binance's 100\,ms.} Every HL event sits on a visible block. With $\bar\beta\approx67$\,ms the comb is at
+        $f_h\approx h\times14.9$\,Hz. If the clock were a rigid lattice with Gaussian jitter $\sigma=1.5$\,ms, \eqref{eq:comb} damps harmonic $h$ by
+        $e^{-2\pi^2\sigma^2f_h^2}$: $0.99,\ 0.96,\ 0.78,\ 0.37$ for $h=1,2,5,10$. But 35\% of blocks are off the core (M2b), so the lattice phase wanders and the comb will be
+        \emph{broadened}. How much depends on how phase-locked the clock is ($\rho(1)=-0.2$ suggests partly). Periods shorter than about two blocks ($\sim135$\,ms) on HL are
+        unobservable.
+  \item \textbf{Binance timestamps.} Use trade time $T$, not event time $E$ (which is about 150\,ms later and batched). bookTicker is event-driven, so it has no 100\,ms grid;
+        but check \code{sampling_report} anyway.
+  \item \textbf{Event definition.} Binance \code{aggTrade} already merges fills of one taker order; HL prints every fill. Group HL fills by \code{hash} (one taker order)
+        before counting, or a single sweep becomes a burst that inflates $\kappa(f)$ in~\eqref{eq:kappa}.
+  \item \textbf{Gaps in the record (masking).} With an observation window $w(t)\in\{0,1\}$ (0 during reconnects), $\E X(f)=\int\lambda(t)w(t)e^{-2\pi\ii ft}\dd t$. The window's
+        own transform $\hat w$ is \emph{convolved} into the spectrum, so a few short gaps add small sidelobes. Normalise by $N$ in the kept window, and drop replayed trades.
+  \item \textbf{Resolution and cycles.} 7.2\,h gives a resolution of $1/T=3.9\times10^{-5}$\,Hz. Requiring $\ge10$ cycles (\code{rayleigh_test}) limits periods to $\le43$\,min.
+        For a 1\,s band to 5\,min, $M\approx T(1-1/300)\approx2.6\times10^4$, so $z^\ast\approx14.8$ at 1\%. That's before the burst inflation $\kappa$, which is why the
+        block-permutation null matters.
+  \item \textbf{Frequency grid.} Use step $\le1/(4T)\approx10^{-5}$\,Hz around named candidates (or the FFT/zero-padded grid), and keep band edges off comb harmonics (\S\ref{sec:checks}).
+  \item \textbf{Phase bias from reaction delay.} A burst of reactions after a scheduled order shifts the measured phase by $\arg\gamma(f)$ in~\eqref{eq:burstbias}. Phase is
+        best read from the first fill of each taker order.
+  \item \textbf{More days, weekdays.} One Sunday morning holds few institutional schedules. Stability across days, the same phase every day, is the strongest
+        test in \S\ref{sec:select}, and it needs several days.
+\end{enumerate}
+
+\end{document}
