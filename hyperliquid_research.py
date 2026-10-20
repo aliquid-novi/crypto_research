@@ -11,8 +11,8 @@
 # 4. Binance activity *inside* HL's gaps leads what HL does next,
 # 5. all of the above across the 6 instruments, comparing crypto perps vs tradfi (HIP-3 `xyz:`) perps.
 #
-# **Status:** exploratory, *unregistered*. `qr-harness_v2` has no `qrlib` (prereg/pit/leakage/audit),
-# so the card gate and the harness leakage gate can't run. This notebook carries its own truncation
+# **Status:** exploratory, *unregistered* (no hypothesis card yet). It was built before `qrlib` existed and hasn't been
+# migrated, so the card gate and the harness leakage gate don't run. This notebook carries its own truncation
 # test (§6) and a trial counter instead.
 #
 # **The structural caveat that runs through everything:** the feed has no block height. A block is
@@ -20,6 +20,30 @@
 # gaps = (sum of k latent block intervals), k ≥ 1. Activity raises visibility, so "more activity → shorter
 # gaps" is partly a sampling artefact. Every activity result below is reported on **single-block gaps**
 # too, which is where the clock itself is measured.
+
+# %% [markdown]
+# ## Summary (run of 2026-10-19 on 2026-10-18 data, 03:14–10:23 UTC, 7.2 h; n_trials = 155; reviewed 2026-10-21)
+# **Weak points first:** one Sunday morning, one 60/40 split, tradfi `xyz:` perps off-hours, no block height in the feed
+# (block counts are inferred), and the HL↔Binance clock offset is unverified. About 27 h has synced since; this run uses 7.2 h.
+#
+# | Question | Result |
+# |---|---|
+# | Q1 distribution | Lattice: a **67.0 ms clock (σ 1.5 ms)** carries 65% of blocks, the rest spread over ~45–100 ms. Mean block 68.1 ms. Exponential is badly wrong. Every model is formally rejected (n = 80k). |
+# | Q2 autocorrelation | Single-block gaps **ρ(1) = −0.20** vs −0.001 from ms rounding: a short block is followed by a longer one. Raw-gap ρ(1) = 0.18 is mostly visibility. |
+# | Q3 activity | Doesn't move the clock (single-block medians 67 vs 67 ms). |
+# | Q4 lags | OOS R² of log next gap 0.09 (union), 0.08–0.22 per instrument. |
+# | Q5 forecast, interval | Union pinball skill vs unconditional 14.1% [13.4, 14.8] at ~zero latency; **10.7% [10.1, 11.3]** on measured `ts_recv` (block known ~280 ms late). |
+# | Binance in the gap | Timing: tiny hazard gain, clock test null. Price: HL reaches half a Binance jump 210 ms (HYPE) to 530 ms (BTC) later. |
+#
+# **Review notes (2026-10-21):**
+# * The "N(0.50, 0.05) ms" scenario is Mark's figure for **HL** block latency. The notebook also applied it to Binance; that was an
+#   agent extension, not Mark's. It has no numerical effect (0.5 ms is below the 1 ms timestamp resolution, so the scenario is
+#   zero latency). It should be dropped from Binance at the next rerun.
+# * The `measured ts_recv` target mixes the VM clock with exchange time, so it assumes the clocks are in sync (unverified).
+# * The Q3 bootstrap CIs resample autocorrelated gaps as if they were independent, so they are too narrow. The Q3 result is a null anyway.
+# * The event-study jump threshold is a full-sample quantile. That's fine for a description, but it isn't a tradeable rule.
+#
+# Findings in §12; open questions at the end.
 
 # %%
 import json
@@ -87,7 +111,8 @@ HAZ_STEP, HAZ_TMAX = 10, 600       # within-gap hazard grid (ms).
 # a forecast made "at block n" can only use what has arrived by then. Q1-Q4, the hazard and the lead analysis stay
 # pure exchange-time descriptions of the process. Two scenarios are run side by side:
 LATENCY_SCENARIOS = {
-    # Mark's figure (2026-10-19). ASSUMPTION: the same N(0.50, 0.05) ms is applied to Binance (Mark gave it for HL only).
+    # Mark's figure (2026-10-19) for HL block latency only. Applying it to Binance ("bn") is an agent extension, not Mark's,
+    # and should be dropped at the next rerun. It has no numerical effect (0.5 ms is below the 1 ms timestamp resolution).
     "N(0.50, 0.05) ms": dict(kind="normal", hl=(0.50, 0.05), bn=(0.50, 0.05)),
     # Each message's actual arrival on the VM (ts_recv). ASSUMPTION: VM clock and exchange clocks are in sync.
     "measured ts_recv": dict(kind="recv"),
@@ -1055,6 +1080,8 @@ pd.DataFrame(TRIALS).groupby("q").size()
 # * Q1–Q4, the hazard and the lead analysis are exchange-time descriptions. Only Q5 applies latency.
 # * The HL↔Binance clock offset is unverified. Every lead/lag number below includes it.
 # * The event study is thin for tradfi (SP500 17 jumps, TSLA 6, CL 3). Read those panels as anecdotes.
+# * (Review, 2026-10-21) The N(0.50, 0.05) ms scenario was also applied to Binance. That was an agent extension of Mark's HL figure,
+#   with no numerical effect. The Q3 bootstrap CIs ignore autocorrelation, so they are too narrow.
 #
 # **Q1 Distribution.** Every candidate is formally rejected (chi² p ≈ 0, n = 80k). The best fit is a lattice:
 # **a 67.0 ms clock (σ 1.5 ms) carrying 65% of blocks, the rest spread over ~45–100 ms**. Mean block 68.1 ms (14.7/s);

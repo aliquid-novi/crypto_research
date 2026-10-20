@@ -173,6 +173,34 @@ def test_editing_prediction_after_registration_is_caught(cards):
         prereg.require("H001")
 
 
+def test_new_card_needs_confirmation_when_two_unresolved(cards):
+    assert prereg.tally() == {"outstanding": 1, "resolved": 0, "outstanding_ids": ["H001"]}
+    prereg.check_new_card_allowed()                      # 1 outstanding: fine
+    (cards / "H002_y.md").write_text((cards / "H001_x.md").read_text().replace("H001", "H002"))
+    with pytest.raises(prereg.PreregistrationError, match="PLEASE CONFIRM"):
+        prereg.check_new_card_allowed()
+    assert prereg.check_new_card_allowed(confirmed=True)["outstanding"] == 2
+    meta, body = prereg.read_card("H001")                # resolving one lifts the block
+    meta |= {"prediction": "p", "falsified_if": "f", "confidence": 0.5, "predicted_by": "mark"}
+    prereg.write_card("H001", meta, body)
+    prereg.register("H001")
+    prereg.resolve("H001", outcome=True)
+    assert prereg.check_new_card_allowed() == {"outstanding": 1, "resolved": 1, "outstanding_ids": ["H002"]}
+
+
+def test_new_post_scaffolds_blank_review_and_rebuild(tmp_path, monkeypatch):
+    from qrlib import cli
+    for f in ("_TEMPLATE.md", "_rebuild_template.py"):
+        (tmp_path / f).write_text((ROOT / "research/post" / f).read_text(encoding="utf-8"), encoding="utf-8")
+    monkeypatch.setattr(cli, "POST_DIR", tmp_path)
+    md, py = cli.new_post("HL MM baseline", "../hl_mm_baseline.py")
+    text = md.read_text(encoding="utf-8")
+    assert md.name == "hl_mm_baseline_post.md" and "{{" not in text and "notebook: ../hl_mm_baseline.py" in text
+    assert py.with_suffix(".ipynb").exists() and "{{" not in py.read_text(encoding="utf-8")
+    with pytest.raises(SystemExit):                      # never overwrites Mark's answers
+        cli.new_post("HL MM baseline", "x")
+
+
 def test_calibration(cards):
     meta, body = prereg.read_card("H001")
     meta |= {"prediction": "p", "falsified_if": "f", "confidence": 0.8, "predicted_by": "mark"}

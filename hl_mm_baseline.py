@@ -17,48 +17,60 @@
 # (with aggressor side). The old `data/HYPERLIQUID` book is ~5.4 s snapshots. That's too coarse for 100–500 ms quoting, so it's unused.
 #
 # **Status:** exploratory and *unregistered*. There's no hypothesis card: this establishes baselines and
-# makes no prediction. `qr-harness_v2` has no `qrlib`, so this notebook carries its own truncation test (§6),
-# fill bounds (§7) and trial counter (§9).
+# makes no prediction. It was built before `qrlib` existed and hasn't been migrated, so it carries its own truncation
+# test (§6), fill bounds (§7) and trial counter (§9).
 #
 # **Weak points up front**
 # * Very little data: the covered segments printed in §2 (a weekend, with holes), and one 60/40 chronological split.
 # * Fills are *simulated* from public trades. There's no queue position, our orders don't affect the book, and partial fills are ignored.
 #   The truth is somewhere between the `through` (pessimistic) and `touch` (optimistic) bounds.
-# * The HYPE spread is 1 tick (~0.13 bps) 78% of the time, so at the touch almost everything hinges on queue position, which we can't see.
-# * Latency: by your convention the main run is in **exchange time + N(0.50, 0.05) ms**. A second run uses
-#   **measured `ts_recv`** (HL data arrives ~280 ms after the block). Order-entry latency is unknown and not modelled
-#   beyond these (see KNOBS).
+# * The HYPE spread is 1 tick (~0.13 bps) 73% of the time, so at the touch almost everything hinges on queue position, which we can't see.
+# * **Fill timing is not feasible as built (biggest weak point).** Everything runs on the VM clock (`ts_recv`), and HL data lands
+#   ~300 ms after the block. With `ORDER_DELAY_MS` = 0, a quote decided at τ is filled by trades *received* in (τ, τ+Δ], but those
+#   trades executed on the exchange ~300 ms earlier, before the quote was sent. In exchange time this is a zero-latency quoter.
+#   Worse, the book update for a block can arrive before that block's trade print, so some quotes are placed after seeing the
+#   post-trade book and then "filled" by that trade. A feasible setting needs `ORDER_DELAY_MS` ≥ feed lag + order entry.
 
 # %% [markdown]
-# ## Summary (run of 2026-10-20; sample frozen at 2026-10-19 06:00 UTC; 14.8 covered hours; n_trials = 54)
+# ## Summary (run of 2026-10-20; sample 2026-10-18 03:14 → 2026-10-19 06:00 UTC; 26.8 h; n_trials = 27)
 # **Bottom line:** on HYPE, no quoter here makes money under either fill bound, even before fees. The micro-price
 # helps a little: it beats the mid at 250–500 ms, and centring quotes on it reduces adverse selection.
 #
-# **Data note.** The local `market_data_v2` copy was still syncing during the build. It has holes and grew between runs,
-# so the notebook works only inside covered segments and freezes the sample end (`DATA_END_UTC`). Train (8.9 h) is almost
-# all Sunday; test (5.9 h) is Monday's Asia session, which is about 3× busier. The old `data/HYPERLIQUID` book (~5.4 s
-# snapshots) is too coarse for 100–500 ms quoting, so it's unused.
+# **Read this first (review of 2026-10-21).** The quoting results below use `ORDER_DELAY_MS` = 0 on the VM clock. That lets a
+# quote be filled by trades that executed on the exchange ~300 ms *before* the quote was sent, so the quoting section is a
+# zero-latency simulation, not an optimistic one. "No quoter makes money" probably survives a realistic delay, but that's untested.
+# The **relative** quoting claims (faster requoting loses less; centring on the micro-price saves ~0.1 bps) were measured under
+# infeasible timing; don't rely on them until they're rerun with `ORDER_DELAY_MS` ≥ feed lag + order entry. The fair-value
+# section (§3.1) is not affected: it only compares what's known at t with the mid known at t + h.
 #
-# **Fair value (exchange view, test): MSE skill vs the plain mid**
+# **Clock.** Everything runs on the VM clock (`ts_recv`): the book is known when it arrives, ~300 ms after the HL block
+# (median; min 196 ms). Order-entry delay: `ORDER_DELAY_MS` = 0 (see above).
+#
+# **Data note.** The local `market_data_v2` copy was still syncing while this was built. The sample end is frozen
+# (`DATA_END_UTC`), but earlier holes can still fill in, and the earlier run of this notebook had a 13.6 h hole that is
+# now filled. Train (16.1 h) runs Sunday 03:14–19:17 UTC; test (10.7 h) runs Sunday evening to Monday morning UTC. The old `data/HYPERLIQUID` book
+# (~5.4 s snapshots) is too coarse for 100–500 ms quoting, so it's unused.
+#
+# **Fair value (test, n = 385,339): MSE skill vs the plain mid**
 #
 # | | 100 ms | 250 ms | 500 ms |
 # |---|---|---|---|
-# | Weighted mid | −9.0% | +3.5% | +3.9% |
-# | Micro-price (textbook) | +1.0% | +1.1% | +1.0% (far too small) |
-# | Micro-price (extended) | −10.5% | +2.1% | **+4.0% [3.6, 4.4]** |
+# | Weighted mid | −17.8% | +0.3% (CI spans 0) | +2.4% |
+# | Micro-price (textbook) | +0.9% | +0.9% | +0.8% (far too small) |
+# | Micro-price (extended) | −4.4% | +2.9% | **+3.8% [3.6, 4.1]** |
 #
 # At 100 ms nothing beats the mid by more than 1%. The textbook micro-price only allows ±1-tick moves per step, which
-# throws away the big moves the imbalance predicts, so it comes out 4–7× too small. The extended version (±4 ticks) is my
+# throws away the big moves the imbalance predicts, so it comes out 2–8× too small. The extended version (±4 ticks) is my
 # modification, not the textbook method.
 #
-# **Quoting**
-# * Every combination loses money, with CIs excluding zero. Quotes earn 0.1–0.3 bps of spread per fill, then lose
-#   0.2–0.9 bps to the price moving against them within a second.
-# * Centring AS quotes on the micro-price instead of the mid helps a little: at Δ = 250 ms the 1 s markout improves from −0.51 to
-#   −0.42 bps. That's clear under `touch`; under `through` the intervals overlap.
-# * Requoting faster loses less per fill: −0.34 / −0.42 / −0.51 bps at Δ = 100 / 250 / 500 ms.
-# * Joining the touch depends entirely on the fill rule: −0.17 bps under `touch`, −0.83 under `through`. It's a bet on queue position.
-# * The `measured ts_recv` results aren't credible yet. They assume zero order-entry latency on a book that's ~290 ms stale.
+# **Quoting** (zero-latency fills, see "Read this first")
+# * Every combination loses money, with CIs excluding zero (−$1.7 to −$6.2 per hour at 1 HYPE per quote).
+# * Centring AS quotes on the micro-price instead of the mid helps a little: at Δ = 250 ms the 1 s markout improves from −0.46 to
+#   −0.34 bps. That's clear under `touch`; under `through` the intervals overlap.
+# * Requoting faster loses less per fill: −0.26 / −0.34 / −0.52 bps at Δ = 100 / 250 / 500 ms (AS on micro-price, `touch`).
+# * Joining the touch depends entirely on the fill rule: −0.17 bps under `touch`, −0.76 under `through` (Δ = 250 ms). It's a bet on queue position.
+# * "Spread captured at the fill" comes out negative on the VM clock, so read markouts, not capture. The book update for a
+#   fill's block can arrive before the trade print, which is the same timing problem described above.
 #
 # The collector has also started writing `blocks` and `l2_fast` tables. `l2_fast` could support a queue-position fill model, and
 # `blocks` could give real block timings for the block-timing notebook.
@@ -101,15 +113,13 @@ MAX_L1_GAP_MS = 30_000      # ASSUMPTION: no HL bbo update for this symbol for 3
 MAX_TR_GAP_MS = 120_000     # ASSUMPTION: no HL trade for 2 min = trade feed hole (normal rate ~1.6/s)
 MIN_SEG_MS = 10 * 60_000    # ASSUMPTION: ignore covered segments shorter than 10 min
 
-# --- latency scenarios (clock in which "known" and "live" are measured) ---
-# exchange: an event at exchange time t is known at t + L_feed; a quote decided at tau is live from tau + L_order.
-# recv:     everything on the VM clock; the book is known when it arrives (ts_recv); fills are judged on trade arrival.
-SCENARIOS = {
-    "exchange + N(0.50, 0.05) ms": dict(clock="exch", feed=(0.50, 0.05), order=(0.50, 0.05)),  # Mark's figure; ASSUMPTION: same for order entry
-    "measured ts_recv": dict(clock="recv", order_delay_ms=0.0),
-    # ASSUMPTION: in the recv scenario a quote can be hit by trades *received* after the decision, i.e. order-entry
-    # latency = 0 on top of the feed delay. That's optimistic; raise order_delay_ms to test it.
-}
+# --- clock / latency ---
+# Everything is on the VM clock: the book is known when it arrives (ts_recv), and fills are judged on trade arrival.
+ORDER_DELAY_MS = 0.0   # ASSUMPTION: a quote can be hit by trades *received* right after the decision. Trades arrive ~300 ms
+                       # after they execute, so at 0 the quote is filled by trades that happened before it was sent
+                       # (infeasible). A feasible value is >= feed lag + order entry; Mark to choose.
+SCENARIOS = {"measured ts_recv": dict(clock="recv", order_delay_ms=ORDER_DELAY_MS)}
+REF = "measured ts_recv"   # the scenario the plots use
 
 # --- fair value (microprice) ---
 FV_HORIZONS_MS = [100, 250, 500]   # the MFT window you asked for
@@ -232,28 +242,17 @@ def grid(t_lo, t_hi, step, pad=0.0, segs=SEGS):
 
 # %% [markdown]
 # ### 2.1 Clock views
-# A *view* holds the book and the trades in one scenario's clock:
-# * `known[i]` is when book row i becomes usable. It's a prefix max, so a row never becomes known before an earlier row.
-# * `tt` is the time used to decide whether a trade hits a resting quote.
-#
-# In the exchange view, trades are judged on exchange time. In the recv view, on arrival time.
+# A *view* holds the book and the trades on the VM clock:
+# * `known[i]` is when book row i becomes usable (its `ts_recv`). It's a prefix max, so a row never becomes known before an earlier row.
+# * `tt` is the time used to decide whether a trade hits a resting quote (its `ts_recv`).
 
 # %%
 class View:
     def __init__(self, name, cfg, l1, tr, seed=SEED):
-        rng = np.random.default_rng(seed)
         self.name, self.cfg = name, cfg
-        if cfg["clock"] == "exch":
-            mu, sd = cfg["feed"]
-            lat = np.clip(rng.normal(mu, sd, len(l1)), 0, None)
-            known = l1.t_exch.values + lat
-            self.tt = tr.t_exch.values
-            self.live_lo = cfg["order"][0]          # quote reaches the book L_order after the decision
-            self.live_hi = -cfg["feed"][0]           # a fill must be known before the next decision
-        else:
-            known = l1.t_recv.values
-            self.tt = tr.t_recv.values
-            self.live_lo, self.live_hi = cfg["order_delay_ms"], 0.0
+        known = l1.t_recv.values
+        self.tt = tr.t_recv.values
+        self.live_lo, self.live_hi = cfg["order_delay_ms"], 0.0   # quote live from decision + order delay to the next decision
         o = np.argsort(known, kind="stable")
         self.known = np.maximum.accumulate(known[o])
         self.b, self.a = l1.b.values[o], l1.a.values[o]
@@ -399,7 +398,7 @@ for nm, mps in MP.items():
         print(f"[{nm}] {var}: fit on {fit['n_obs']:,} train transitions; states seen {fit['seen'].sum()}/{len(fit['g'])}")
 
 # %%
-v0 = VIEWS["exchange + N(0.50, 0.05) ms"]
+v0 = VIEWS[REF]
 centres = (np.arange(N_IMB) + 0.5) / N_IMB
 # realised mean mid change h ms ahead, by state, on TRAIN (what the fair values are trying to anticipate)
 g_tr, _ = grid(T0, T_SPLIT, 100, pad=500)
@@ -418,7 +417,7 @@ for j in range(2):
     ax[j].set(title=f"spread = {s} tick{'s' if s > 1 else ''}", xlabel="imbalance I = Qb / (Qb + Qa)")
 ax[0].set_ylabel("adjustment to mid (ticks)")
 ax[0].legend(frameon=False, fontsize=7)
-fig.suptitle(f"{SYMBOL}: fair-value adjustment vs imbalance (train, exchange clock)", fontsize=10)
+fig.suptitle(f"{SYMBOL}: fair-value adjustment vs imbalance (train, VM clock)", fontsize=10)
 plt.tight_layout(); plt.show()
 
 # %% [markdown]
@@ -463,7 +462,8 @@ fv_tab = pd.concat([score_fv(VIEWS[nm], MP[nm]) for nm in VIEWS]).set_index(["sc
 fv_tab
 
 # %%
-fig, ax = plt.subplots(1, len(VIEWS), figsize=(10, 3.4), sharey=True)
+fig, ax = plt.subplots(1, len(VIEWS), figsize=(6, 3.4), sharey=True, squeeze=False)
+ax = ax[0]
 for a_, nm in zip(ax, VIEWS):
     for j, (fv, col) in enumerate(zip(FV_NAMES[1:], [C2, C_MUTED, C3])):
         sub = fv_tab.xs((nm, fv), level=("scenario", "fair value")).sort_index()
@@ -615,13 +615,17 @@ FILLS = ["through", "touch"]
 
 # %% [markdown]
 # ## 5. Fill model (both bounds, always reported)
-# A resting bid at price $b$ during its window $(\tau+L_{\text{order}},\ \tau+\Delta-L_{\text{feed}}]$ is filled (whole `QUOTE_SZ`) if a
-# **seller-initiated** trade printed
+# A resting bid at price $b$ during its window $(\tau+L_{\text{order}},\ \tau+\Delta]$ (VM clock, $L_{\text{order}}$ = `ORDER_DELAY_MS`;
+# trades judged by when they were *received*) is filled (whole `QUOTE_SZ`) if a **seller-initiated** trade printed
 # * **through:** strictly below $b$. The level was swept, so wherever we sat in the queue we'd have been filled. *Pessimistic.*
 # * **touch:** at or below $b$. Assumes we were at the front of the queue. *Optimistic.*
 #
 # The ask side mirrors this. At most one fill per side per window. Our orders don't change the book or anyone's behaviour.
 # The fill time (for markouts) is the first qualifying trade's time.
+#
+# **Timing caveat.** A trade received at τ + ε executed on the exchange ~300 ms earlier. With $L_{\text{order}}$ = 0 the quote is
+# therefore filled by trades that happened before it was sent. For a fill to be feasible, $L_{\text{order}}$ has to be at least the
+# feed lag plus the order-entry time.
 
 # %% [markdown]
 # ## 6. Leakage gate (truncation test)
@@ -705,7 +709,7 @@ res = pd.DataFrame(res_rows).set_index(["scenario", "Δ ms", "strategy", "fill"]
 res
 
 # %%
-nm0 = "exchange + N(0.50, 0.05) ms"
+nm0 = REF
 fig, ax = plt.subplots(1, len(QUOTE_DTS_MS), figsize=(12, 3.6), sharey=True)
 xlab = ["at fill"] + [f"{H} ms" if H < 1000 else f"{H // 1000} s" for H in MARKOUT_MS]
 for a_, dt in zip(ax, QUOTE_DTS_MS):
@@ -744,7 +748,7 @@ plt.tight_layout(); plt.show()
 # Everything downstream takes a fair value `s` in ticks at each decision time. To try an idea of your own:
 # 1. Write it as a function of the **book and trades known at τ** only (use `view.book_at`, `view.asof`, or windows ending at τ).
 # 2. Add it as a column in `fair_values`. §3.1 then scores it against mid, weighted mid and micro-price at 100–500 ms.
-# 3. Add a strategy name in `run_quotes` that centres on it. §7 then gives fills, markouts and PnL against the same baselines, under both fill bounds and both latency scenarios.
+# 3. Add a strategy name in `run_quotes` that centres on it. §7 then gives fills, markouts and PnL against the same baselines, under both fill bounds, on the VM clock.
 # 4. Re-run §6. The truncation test must still pass, or nothing after it counts.
 #
 # A sharper fair value should show up first as **FV skill** (§3.1), then as **less adverse selection** at 250–1000 ms in the
@@ -757,47 +761,46 @@ plt.tight_layout(); plt.show()
 print(f"n_trials (evaluated variants in this notebook): {len(TRIALS)}")
 pd.DataFrame(TRIALS).groupby("part").size()
 # %% [markdown]
-# ## 10. Findings (run of 2026-10-20; sample frozen at 2026-10-19 06:00 UTC; n_trials = 54)
+# ## 10. Findings (run of 2026-10-20; sample 2026-10-18 03:14 → 2026-10-19 06:00 UTC; n_trials = 27)
 # *Prose written to match the executed tables above. If they disagree after a re-run, trust the tables.*
 #
 # **Weak points first**
-# * **Data.** 14.8 covered hours in two segments: Sun 10-18 03:14–12:00 and Mon 10-19 00:00–06:00 UTC. Train (8.9 h) is
-#   almost all Sunday; test (5.9 h) is Monday's Asia session, which is busier. The mid moves in 14% of 100 ms intervals there, against ~4% on Sunday morning.
-#   That's one regime change and one split.
+# * **Data.** 26.8 h, one covered segment, one 60/40 split. Train is mostly Sunday; test is Sunday evening to Monday morning
+#   UTC. The mid moves in 16% of 100 ms intervals in test.
 # * **Fills are simulated:** no queue position, no fees, 1 HYPE per quote, and our orders don't move the book. `touch` assumes the front of the queue.
-# * **The `measured ts_recv` scenario assumes zero order-entry latency** on a book that is ~290 ms stale. Its quoting numbers aren't
-#   credible as they stand. Its *capture at fill* is negative because, on the VM clock, the book update for a fill's block can arrive before
-#   the trade print.
+# * **The quoting fills are infeasible as timed.** With `ORDER_DELAY_MS` = 0 on the VM clock, quotes are filled by trades that
+#   executed ~300 ms before the quote was sent (zero latency in exchange time), and some are placed after the post-trade book has
+#   arrived. Capture at the fill is negative for that reason. The relative quoting claims below are not reliable until rerun with
+#   `ORDER_DELAY_MS` ≥ feed lag + order entry. The fair-value results are not affected.
 # * **The "extended" micro-price is my modification of Stoikov's estimator** (ASSUMPTION in KNOBS), not the textbook method.
 #
-# **Fair value (test, 100 ms grid, n = 212,526)**
-# * At **100 ms** almost nothing beats the mid. The weighted mid (−9.0%) and the extended micro-price (−10.5%) overshoot
-#   (calibration slopes 0.40 and 0.25). The textbook micro-price is +1.0% [0.9, 1.1], but it is undersized (slope 1.5).
-# * At **250 / 500 ms** the weighted mid reaches +3.5% / +3.9% and the extended micro-price +2.1% / **+4.0% [3.6, 4.4]**. The extended
-#   micro-price is close to calibrated at 500 ms (slope 1.14). The textbook micro-price stays at about +1%, because its adjustment is 4–7× too small
-#   (slopes 3.8 / 6.7): restricting moves to ±1 tick throws away the moves the imbalance predicts.
-# * The recv clock gives the same picture (the weighted-mid CI at 250 ms crosses 0).
+# **Fair value (test, 100 ms grid, n = 385,339)**
+# * At **100 ms** almost nothing beats the mid. The weighted mid (−17.8%) and the extended micro-price (−4.4%) overshoot
+#   (calibration slopes 0.31 and 0.33). The textbook micro-price is +0.9% [0.8, 0.9], but it is undersized (slope 1.9).
+# * At **250 / 500 ms** the weighted mid is +0.3% (CI [−1.6, 1.6]) / +2.4% [1.4, 3.1], and the extended micro-price is
+#   +2.9% [2.6, 3.2] / **+3.8% [3.6, 4.1]** (slopes 0.82 / 1.44). The textbook micro-price stays below +1%: its adjustment is
+#   4.7–8.4× too small, because restricting moves to ±1 tick throws away the moves the imbalance predicts.
 #
-# **Quoting (exchange clock; mark-to-mid, no fees)**
-# * **All 18 combinations lose money**, and every PnL/h CI excludes 0. The size is tiny (−$1.8 to −$5.0/h at 1 HYPE/quote), so read it per fill:
-#   spread captured at the fill is −0.06 to 0.11 bps (touch quoter) or 0.12–0.34 bps (AS, which quotes ~2.3–2.5 ticks from mid).
-#   Adverse selection by 1 s (0.2–0.9 bps) is larger than the capture in every case.
-# * **AS(micro-price) vs AS(mid):** less adverse selection in every Δ and both fill bounds. At Δ = 250 ms the 1 s markout is
-#   −0.42 [−0.47, −0.37] vs −0.51 [−0.56, −0.46] bps (touch), and −0.61 [−0.66, −0.56] vs −0.66 [−0.71, −0.60] (through). Under `through`
-#   the (unpaired) CIs overlap, so the size of the improvement is only clear under `touch`. It also carries less inventory
-#   (mean |q| 1.7 vs 2.3 lots).
-# * **Shorter requote → less adverse selection.** AS(micro-price) [touch] 1 s markout: −0.34 / −0.42 / −0.51 bps at Δ = 100 / 250 / 500 ms.
-# * **Join-the-touch is the bound-sensitive one.** It is the least adversely selected per fill under `touch` (−0.17 bps at 1 s) and the most under
-#   `through` (−0.83). Anything that rests on joining the touch is a queue-position bet. It also sits pinned at ±5 lots (mean |q| 3.3).
-# * AS's fitted fill decay is k ≈ 0.45 / tick, so its quotes sit ~2.4 ticks from mid in a market that's 1 tick wide 78% of the time. Most AS fills
-#   come from trades that sweep through the touch.
+# **Quoting (VM clock, zero-latency fills; mark-to-mid, no fees)**
+# * **All 18 combinations lose money**, and every PnL/h CI excludes 0 (−$1.7 to −$6.2/h at 1 HYPE per quote). Per fill, the 1 s
+#   markout is −0.14 to −0.87 bps.
+# * **AS(micro-price) vs AS(mid):** less adverse selection at every Δ under both fill bounds. 1 s markout, `touch`:
+#   −0.26 [−0.29, −0.23] vs −0.36 [−0.39, −0.32] (Δ 100), −0.34 [−0.38, −0.31] vs −0.46 [−0.50, −0.42] (Δ 250),
+#   −0.52 [−0.56, −0.48] vs −0.62 [−0.66, −0.57] (Δ 500). Under `through` the gaps are 0.02–0.06 bps and the (unpaired) CIs
+#   overlap, so the improvement is only clear under `touch`. It also carries less inventory (mean |q| 1.8–2.2 vs 2.2–2.5 lots).
+# * **Shorter requote → less adverse selection:** AS(micro-price) [touch] −0.26 / −0.34 / −0.52 bps at Δ = 100 / 250 / 500 ms.
+# * **Join-the-touch is the bound-sensitive one.** It is the least adversely selected per fill under `touch` (−0.14 to −0.23 bps) and
+#   the most under `through` (−0.71 to −0.87). Anything resting on it is a queue-position bet. It also sits near ±5 lots (mean |q| 3.2–3.4).
+# * AS's fitted fill decay is k ≈ 0.39–0.44 / tick, so its quotes sit ~2.5–2.8 ticks from mid in a market that's 1 tick wide 73% of the time.
+#   Most AS fills come from trades that sweep through the touch.
 #
-# **What this baseline says to beat:** fair-value skill at 250–500 ms of about +4% MSE vs mid, and per-fill 1 s markouts of −0.34 to −0.75 bps
-# before fees for AS. None of these quoters is profitable on this sample under either fill bound.
+# **What this baseline says to beat:** fair-value skill at 250–500 ms of about +3–4% MSE vs mid, and per-fill 1 s markouts of
+# −0.26 to −0.71 bps before fees for AS. None of these quoters is profitable on this sample under either fill bound.
 #
 # **Open questions for Mark**
 # 1. Which fill model do you believe for HL at the touch? The new `l2_fast` table could support a queue-position estimate between the two bounds.
-# 2. What order-entry latency should the recv scenario use?
+# 2. How should fills be timed? (a) Exchange time, with a quote live from τ + L: needs the VM and HL clocks to be in sync.
+#    (b) The VM clock with `ORDER_DELAY_MS` ≥ feed lag (~200–300 ms) + order entry. What order-entry time do you believe?
 # 3. Quote size, inventory limit and skew (γ). What inventory risk do you actually want to carry?
 # 4. Which fee tier should go into `MAKER_FEE_BPS`?
 # 5. Keep the extended micro-price as the fair-value baseline, or only the textbook one?
@@ -809,7 +812,12 @@ pd.DataFrame(TRIALS).groupby("part").size()
 # * The train/test split is 60/40 by *covered* time.
 # * A feed hole is 30 s with no bbo update or 2 min with no trade. Segments shorter than 10 min are ignored.
 # * Inventory is flattened at mid, for free, at every data hole. Coverage is treated as known: that's bookkeeping, not a signal.
-# * The sample is frozen at `DATA_END_UTC` = 2026-10-19 06:00 UTC.
+# * The sample ends at `DATA_END_UTC` = 2026-10-19 06:00 UTC.
+#
+# **Clock and latency**
+# * All on the VM clock (`ts_recv`). Order-entry delay is 0 (`ORDER_DELAY_MS`). That isn't just optimistic: it makes the quoting fills
+#   infeasible (trades that executed before the quote was sent can fill it). Raise it to ≥ feed lag + order entry.
+# * Fair value, AS parameters and the bps conversion use `TICK` and `PX_REF` from the whole sample. They are units, not signals.
 #
 # **Micro-price**
 # * 10 equal-width imbalance buckets; the Stoikov chain is sampled every 100 ms.
@@ -821,18 +829,8 @@ pd.DataFrame(TRIALS).groupby("part").size()
 # * AS horizon (T − t) held at 1 s. γ is set so that |q| = 5 skews the reservation price by 2 ticks (0.4 tick per lot).
 # * Fill decay λ(d) = A·e^(−kd) is fitted on distances of 0.5–4.5 ticks from mid, using touch-style counting.
 #
-# **Latency**
-# * N(0.50, 0.05) ms is applied to order entry as well as the feed.
-# * Zero order-entry delay in the `measured ts_recv` scenario (optimistic).
-#
 # **Fills and costs**
 # * Maker fees are 0.
 # * One full fill per side per window. No queue position, no partial fills, and our orders have no effect on the book.
 #
-# **Open questions for Mark** (repeated from §10)
-# 1. Which fill rule do you believe at the HL touch? Should we build a queue-position estimate from `l2_fast`?
-# 2. What order-entry latency should the recv scenario use?
-# 3. What quote size and inventory risk do you want?
-# 4. Which fee tier should go into `MAKER_FEE_BPS`?
-# 5. Should the extended or the textbook micro-price be the baseline?
-# 6. Once more days sync, should we split by day instead of 60/40?
+# **Open questions for Mark:** see §10.

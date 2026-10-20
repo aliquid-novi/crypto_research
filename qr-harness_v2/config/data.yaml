@@ -1,0 +1,41 @@
+# Column mapping for Mark's own collector output (public feeds only; CLAUDE.md rule 9).
+# qrlib.data.load() reads this and returns frames with standard columns:
+#   l1:     ts_exch, ts_recv, bid_px, bid_sz, ask_px, ask_sz      (+ conn_ordinal)
+#   trades: ts_exch, ts_recv, price, size, side ('buy'/'sell' aggressor), trade_id, hash  (+ conn_ordinal)
+# Timestamps become datetime64[ns] UTC-naive.
+
+root: ../../market_data_v2/normalized     # relative to qr-harness_v2/ ; hive layout table=/venue=/symbol=/date=/hour=
+
+# Windows can't have ':' in folder names; rclone writes it as U+F03A.
+path_char_map: {":": ""}
+
+tables:
+  l1:
+    HYPERLIQUID:
+      ts_exch: ts_exch_ns        # bbo channel, block time, integer ms
+      ts_recv: ts_recv_ns
+      cols: {bid_px: bid_px, bid_sz: bid_sz, ask_px: ask_px, ask_sz: ask_sz}
+      drop_subscribe_replays: true
+    BINANCE_FUTURES:
+      ts_exch: ts_txn_ns         # bookTicker T (matching-engine time); E would be ts_exch_ns
+      ts_recv: ts_recv_ns
+      cols: {bid_px: bid_px, bid_sz: bid_sz, ask_px: ask_px, ask_sz: ask_sz}
+  trades:
+    HYPERLIQUID:
+      ts_exch: ts_exch_ns
+      ts_recv: ts_recv_ns
+      cols: {price: price, size: size, side: aggressor, trade_id: trade_id, hash: hash}
+      drop_subscribe_replays: true   # each ws (re)subscribe replays recent trades
+    BINANCE_FUTURES:
+      ts_exch: ts_trade_ns       # aggTrade T; E (ts_exch_ns) lags T by ~150 ms
+      ts_recv: ts_recv_ns
+      cols: {price: price, size: size, side: aggressor, trade_id: trade_id}
+
+# HL symbol -> Binance pair used as its reference (ASSUMPTION carried over from hyperliquid_research: SPY for SP500)
+pairs:
+  BTC-USD-PERP: BTC-USDT-PERP
+  HYPE-USD-PERP: HYPE-USDT-PERP
+  AAVE-USD-PERP: AAVE-USDT-PERP
+  xyz:SP500-USD-PERP: SPY-USDT-PERP
+  xyz:TSLA-USD-PERP: TSLA-USDT-PERP
+  xyz:CL-USD-PERP: CL-USDT-PERP

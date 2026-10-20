@@ -2,17 +2,12 @@
   "permissions": {
     "allow": [
       "Bash(python -m qrlib.cli:*)",
-      "Bash(python3 -m qrlib.cli:*)",
       "Bash(python -m pytest:*)",
-      "Bash(python3 -m pytest:*)",
       "Bash(python -m jupytext:*)",
-      "Bash(python3 -m jupytext:*)",
       "Bash(python -m jupyter nbconvert:*)",
-      "Bash(python3 -m jupyter nbconvert:*)",
       "Bash(python .claude/hooks/scan_lookahead.py:*)",
-      "Bash(python3 .claude/hooks/scan_lookahead.py:*)",
       "Bash(python tools/nb_dump.py:*)",
-      "Bash(python3 tools/nb_dump.py:*)"
+      "Bash(python .claude/hooks/protect_cards.py:*)"
     ],
     "deny": [
       "Edit(research/audit/**)",
@@ -28,7 +23,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "python3 \"$CLAUDE_PROJECT_DIR/.claude/hooks/protect_cards.py\""
+            "command": "python \"$CLAUDE_PROJECT_DIR/.claude/hooks/protect_cards.py\""
           }
         ]
       }
@@ -39,7 +34,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "python3 \"$CLAUDE_PROJECT_DIR/.claude/hooks/scan_lookahead.py\""
+            "command": "python \"$CLAUDE_PROJECT_DIR/.claude/hooks/scan_lookahead.py\""
           }
         ]
       }

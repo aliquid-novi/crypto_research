@@ -58,12 +58,19 @@ qrlib/              deterministic infrastructure (don't put models here)
   audit.py          JSONL trail, n_trials
   prereg.py         registration lock, resolve, calibration
   synth.py          synthetic market with known latent price
-  cli.py            python -m qrlib.cli ...
+  data.py           loader for market_data_v2 (column mapping in config/data.yaml) + coverage()
+  cli.py            python -m qrlib.cli ...  (new-card, register, status, resolve, calibration,
+                    n-trials, new-paper, new-notebook, sync, run, new-post)
+.claude/
+  commands/         /hypothesis /paper /build /review /resolve /plumb /explain
+  agents/           notebook-builder, leakage-auditor, results-critic, paper-reader
+  hooks/            protect_cards.py (locks registered card fields), scan_lookahead.py
 research/
   hypotheses/       H###_slug.md cards (template: _TEMPLATE.md)
   papers/           paper cards; pdfs/ is gitignored
   notebooks/        H###_slug.py (jupytext percent, committed) + .ipynb (local, gitignored)
   audits/           leakage-auditor reports
+  post/             Mark's post-implementation reviews (<name>_post.md) + rebuild notebooks (<name>_rebuild.py)
   signals/registry.csv
   audit/runs.jsonl  append-only
 config/data.yaml    column mapping for Mark's parquet
@@ -74,11 +81,14 @@ tools/nb_dump.py    notebook -> text + PNGs for reading outputs
 ## Notebook conventions
 
 - Create with `python -m qrlib.cli new-notebook H###` (copies `_template.py`, pairs an .ipynb).
-  Edit the `.py`; run `python -m jupytext --sync <file>` after editing so the pair stays aligned.
+  Edit the `.py`; run `python -m qrlib.cli sync <file.py>` after editing so the pair stays aligned
+  (uses jupytext if installed, else a built-in converter that keeps outputs of unchanged cells).
+- Every notebook carries its own summary: a **Summary** cell after the title, and Findings, the full
+  **Assumptions** list and **Open questions** at the end. Same content as the chat summary.
 - Structure is fixed: gate → KNOBS → data → model function → leakage gate → evaluation →
   fills/markouts → log → findings. Keep cells small and readable; Mark is going to play with them.
 - Everything tunable goes in KNOBS. Comment *why* for each modelling line, briefly.
-- Execute with: `python -m jupyter nbconvert --to notebook --execute --inplace research/notebooks/H###_*.ipynb`
+- Execute with: `python -m qrlib.cli run H###` (sync + `jupyter nbconvert --execute --inplace`).
 
 ## Workflows (slash commands)
 
@@ -90,6 +100,11 @@ tools/nb_dump.py    notebook -> text + PNGs for reading outputs
 - `/plumb <task>` — branch 2: small notebook/code help. Minimal diff, don't touch research logic.
 - `/explain [notebook] [cells] <question>` — branch 2: read the saved notebook (incl. plots) and help
   interpret it. Mechanics answered directly; meaning questions start from Mark's own read.
+- **Post-implementation review** — `python -m qrlib.cli new-post <name> --notebook <path> [--card H###]` creates
+  `research/post/<name>_post.md` and a rebuild notebook. **Mark fills both; agents never write the answers.** If he asks,
+  point to *where* something is (cell, knob), not *what* it says. Don't pre-fill it, even with "suggested" text.
+- **Outstanding hypotheses:** `status` ends with `N outstanding, M resolved`. With 2+ unresolved, `new-card` refuses
+  until Mark confirms (`--confirm`); `/hypothesis` asks him first.
 
 To see notebook outputs, use `python tools/nb_dump.py <nb.ipynb>` and Read the PNGs it saves.
 The built-in notebook reader drops plots. You only ever see the last *saved* state.
