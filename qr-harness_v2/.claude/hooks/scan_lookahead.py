@@ -22,7 +22,7 @@ RULES = [
     (re.compile(r"on\s*=\s*['\"]ts_exch|ts_col\s*=\s*['\"]ts_exch"), "join on ts_exch (rule 3: join on ts_recv + latency)"),
     (re.compile(r"\(\s*(\w+(?:\[[^\]]+\])?)\s*-\s*\1\.mean\(\)\s*\)\s*/\s*\1\.std\(\)"), "full-sample z-score"),
 ]
-SCOPE = re.compile(r"research/notebooks/.+\.(py|ipynb)$")
+SCOPE = re.compile(r"research/(notebooks|cheap)/.+\.(py|ipynb)$")
 
 
 def lines_of(path: Path):

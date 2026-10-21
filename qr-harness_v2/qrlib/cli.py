@@ -13,6 +13,8 @@
   sync <notebook.py>                                  .py (percent format) -> .ipynb, keeping outputs of unchanged cells
   run H###                                            sync + execute the notebook in place
   new-post <name> --notebook <path> [--card H###]     research/post/<name>_post.md + <name>_rebuild.py (Mark fills both)
+  new-cheap "<title>" [--request "..."]               research/cheap/C###_slug.py (+ .ipynb): a cheap hypothesis (/chype)
+  run C###                                            sync (keeping Mark's pre/post cell) + execute a cheap notebook
 """
 from __future__ import annotations
 
@@ -22,7 +24,7 @@ import subprocess
 import sys
 from datetime import datetime, timezone
 
-from . import ROOT, audit, prereg
+from . import ROOT, audit, cheap, prereg
 
 NB_DIR = ROOT / "research" / "notebooks"
 PAPER_DIR = ROOT / "research" / "papers"
@@ -88,6 +90,8 @@ def sync(py_path) -> str:
 
     py_path = Path(py_path)
     ipynb = py_path.with_suffix(".ipynb")
+    if py_path.resolve().parent == cheap.CHEAP_DIR.resolve():
+        cheap.pull_marks_cell(py_path)          # Mark writes his pre/post cell in the .ipynb; never overwrite it
     try:
         import jupytext  # noqa: F401
         subprocess.run([sys.executable, "-m", "jupytext", "--set-formats", "ipynb,py:percent", str(py_path)], check=True)
@@ -153,12 +157,28 @@ def new_post(name: str, notebook: str, card: str = ""):
     return md, py
 
 
+def new_cheap(title: str, request: str = ""):
+    cheap.CHEAP_DIR.mkdir(parents=True, exist_ok=True)
+    ids = cheap.all_ids()
+    cid = f"C{(int(ids[-1][1:]) + 1) if ids else 1:03d}"
+    py = cheap.CHEAP_DIR / f"{cid}_{_slug(title)}.py"
+    tmpl = (cheap.CHEAP_DIR / "_template.py").read_text(encoding="utf-8")
+    req = "\n".join("# > " + l for l in (request or "(none given)").splitlines())
+    py.write_text(tmpl.replace("{{ID}}", cid).replace("{{TITLE}}", title).replace("# > {{REQUEST}}", req), encoding="utf-8")
+    sync(py)
+    return cid, py
+
+
 def run(hid: str):
-    py = NB_DIR / f"{prereg.card_path(hid).stem}.py"
-    prereg.require(hid)
+    if hid.startswith("C"):
+        py, cwd = cheap.path(hid), cheap.CHEAP_DIR
+        cheap.require(hid)
+    else:
+        py, cwd = NB_DIR / f"{prereg.card_path(hid).stem}.py", NB_DIR
+        prereg.require(hid)
     ipynb = sync(py)
     subprocess.run([sys.executable, "-m", "jupyter", "nbconvert", "--to", "notebook", "--execute", "--inplace",
-                    "--ExecutePreprocessor.timeout=3600", ipynb], check=True, cwd=NB_DIR)
+                    "--ExecutePreprocessor.timeout=3600", ipynb], check=True, cwd=cwd)
     return ipynb
 
 
@@ -180,6 +200,7 @@ def main(argv=None):
     p = sub.add_parser("sync"); p.add_argument("path")
     p = sub.add_parser("run"); p.add_argument("id")
     p = sub.add_parser("new-post"); p.add_argument("name"); p.add_argument("--notebook", required=True); p.add_argument("--card", default="")
+    p = sub.add_parser("new-cheap"); p.add_argument("title"); p.add_argument("--request", default="")
     a = ap.parse_args(argv)
     try:
         if a.cmd == "new-card":
@@ -190,6 +211,9 @@ def main(argv=None):
         elif a.cmd == "register":
             m = prereg.register(a.id)
             print(f"{a.id} registered at {m['registered_at']} (lock {m['lock_hash'][:12]})")
+        elif a.cmd == "status" and a.id and a.id.startswith("C"):
+            for k, v in cheap.status(a.id).items():
+                print(f"{k:>14}: {v}")
         elif a.cmd == "status":
             if a.id:
                 meta, _ = prereg.read_card(a.id)
@@ -207,6 +231,11 @@ def main(argv=None):
                 warn = (f"  <- {prereg.OUTSTANDING_LIMIT}+ unresolved: a new card needs Mark's confirmation"
                         if t["outstanding"] >= prereg.OUTSTANDING_LIMIT else "")
                 print(f"hypotheses: {t['outstanding']} outstanding, {t['resolved']} resolved{warn}")
+                cs = [cheap.status(c) for c in cheap.all_ids()]
+                if cs:
+                    waiting = [c["id"] for c in cs if c["stage"] != "done"]
+                    print(f"cheap: {len(cs)} total, {len(cs) - len(waiting)} done"
+                          + (f"; not finished: {', '.join(waiting)}" if waiting else ""))
         elif a.cmd == "resolve":
             m = prereg.resolve(a.id, outcome=(a.outcome == "held"), lesson=a.lesson)
             print(f"{a.id} resolved: {'held' if m['outcome'] else 'failed'} (n_trials {m['n_trials_at_resolution']})")
@@ -224,10 +253,13 @@ def main(argv=None):
             print(sync(a.path))
         elif a.cmd == "run":
             print(run(a.id))
+        elif a.cmd == "new-cheap":
+            cid, py = new_cheap(a.title, a.request)
+            print(f"{cid} -> {py}")
         elif a.cmd == "new-post":
             md, py = new_post(a.name, a.notebook, a.card)
             print(f"{md}\n{py}")
-    except prereg.PreregistrationError as e:
+    except (prereg.PreregistrationError, cheap.CheapError) as e:
         print(f"refused: {e}", file=sys.stderr)
         return 1
     return 0

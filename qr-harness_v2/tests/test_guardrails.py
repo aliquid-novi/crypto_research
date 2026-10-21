@@ -201,6 +201,37 @@ def test_new_post_scaffolds_blank_review_and_rebuild(tmp_path, monkeypatch):
         cli.new_post("HL MM baseline", "x")
 
 
+def test_cheap_gate_and_marks_cell_survive_sync(tmp_path, monkeypatch):
+    import nbformat as nbf
+    from qrlib import cheap, cli
+    (tmp_path / "_template.py").write_text((ROOT / "research/cheap/_template.py").read_text(encoding="utf-8"), encoding="utf-8")
+    monkeypatch.setattr(cheap, "CHEAP_DIR", tmp_path)
+    monkeypatch.setattr(audit, "LOG", tmp_path / "runs.jsonl")
+    cid, py = cli.new_cheap("spread mean reverts", request="test 1s spread AR(1)")
+    assert cid == "C001" and "> test 1s spread AR(1)" in py.read_text(encoding="utf-8")
+    assert cheap.status(cid)["stage"] == "needs pre"
+    with pytest.raises(cheap.CheapError, match="pre-implementation"):
+        cheap.require(cid)
+    # Mark fills the pre section in the .ipynb, and the agent then edits a code cell in the .py and syncs
+    ipynb = py.with_suffix(".ipynb")
+    nb = nbf.read(ipynb, as_version=4)
+    md = nb.cells[0]
+    for label in cheap.PRE:
+        md.source = md.source.replace(f"**{label}:** _(Mark)_", f"**{label}:** mark wrote {label}")
+    nbf.write(nb, ipynb)
+    py.write_text(py.read_text(encoding="utf-8").replace("# ---- data ----", "# ---- data ----\nx = 1"), encoding="utf-8")
+    cli.sync(py)
+    assert "mark wrote Hypothesis" in nbf.read(ipynb, as_version=4).cells[0].source      # not overwritten
+    assert "mark wrote Hypothesis" in py.read_text(encoding="utf-8")                      # pulled into the .py
+    assert cheap.require(cid)["Hypothesis"] == "mark wrote Hypothesis"
+    assert cheap.status(cid)["stage"] == "awaiting post"
+    nb = nbf.read(ipynb, as_version=4)                   # editing the pre afterwards is recorded, not hidden
+    nb.cells[0].source = nb.cells[0].source.replace("mark wrote Hypothesis", "something else")
+    nbf.write(nb, ipynb)
+    cheap.require(cid)
+    assert cheap.status(cid)["pre_changed"]
+
+
 def test_calibration(cards):
     meta, body = prereg.read_card("H001")
     meta |= {"prediction": "p", "falsified_if": "f", "confidence": 0.8, "predicted_by": "mark"}
