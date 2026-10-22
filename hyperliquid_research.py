@@ -151,32 +151,45 @@ def _in_windows(col, typ):
         f = e if f is None else f | e
     return f
 
-def load(table, venue, cols, ts_col, syms, derive=None):
-    """Rows of `syms` inside DATA_WINDOWS, read batch by batch into preallocated columns (Binance BTC l1 is ~1.4M rows/h,
-    so the raw columns don't fit in memory at once). `derive(batch) -> {name: array}` keeps only what's needed.
+def load(table, venue, cols, ts_col, syms, derive=None, sort_t=False):
+    """Rows of `syms` inside DATA_WINDOWS, read one symbol at a time into preallocated columns (Binance BTC l1 is ~1.4M
+    rows/h, so the raw columns don't fit in memory at once). `derive(batch) -> {name: array}` keeps only what's needed.
+    Each symbol is a contiguous block of rows; `df.attrs["rows"][sym]` is its slice. sort_t sorts each block by `t` in place,
+    so streams can be views of the frame instead of copies.
     The collector renamed the `xyz:` folders to `xyz_`; the old copies (':' written as U+F03A) duplicate the first 9 h
     and are skipped."""
     derive = derive or (lambda b: {c: b.column(c).to_numpy(zero_copy_only=False) for c in cols})
-    folders = {s.replace(":", "_"): s for s in syms}
     base = DATA_ROOT / f"table={table}" / f"venue={venue}"
-    files = [str(f) for k in folders for f in (base / f"symbol={k}").rglob("*.parquet")]   # skips in-flight *.partial sync files
-    d = ds.dataset(files, format="parquet", partitioning="hive", partition_base_dir=str(base))
-    flt = ds.field("symbol").isin(list(folders)) & _in_windows(ts_col, d.schema.field(ts_col).type)
-    n = d.count_rows(filter=flt)
-    out, codes, i = None, np.empty(n, np.int8), 0
-    for b in d.to_batches(columns=cols + ["symbol"], filter=flt):
-        m = b.num_rows
-        if m == 0:
-            continue
-        new = derive(b)
-        out = out or {k: np.empty(n, v.dtype) for k, v in new.items()}
-        for k, v in new.items():
-            out[k][i:i + m] = v
-        codes[i:i + m] = pd.Categorical(b.column("symbol").to_pandas().map(folders), categories=syms).codes
-        i += m
-    assert i == n
+    sets = {}
+    for s in syms:
+        files = [str(f) for f in (base / f"symbol={s.replace(':', '_')}").rglob("*.parquet")]   # skips in-flight *.partial files
+        d = ds.dataset(files, format="parquet")
+        flt = _in_windows(ts_col, d.schema.field(ts_col).type)
+        sets[s] = (d, flt, d.count_rows(filter=flt))
+    n = sum(v[2] for v in sets.values())
+    out, codes, rows, i = None, np.empty(n, np.int8), {}, 0
+    for k, (s, (d, flt, ns)) in enumerate(sets.items()):
+        a = i
+        for b in d.to_batches(columns=cols, filter=flt):
+            m = b.num_rows
+            if m == 0:
+                continue
+            new = derive(b)
+            out = out or {c: np.empty(n, v.dtype) for c, v in new.items()}
+            for c, v in new.items():
+                out[c][i:i + m] = v
+            i += m
+        assert i - a == ns
+        codes[a:i] = k
+        rows[s] = slice(a, i)
+        if sort_t and i > a:
+            o = np.argsort(out["t"][a:i], kind="stable")
+            for c in out:
+                out[c][a:i] = out[c][a:i][o]
+            del o
     df = pd.DataFrame(out, copy=False)
     df["symbol"] = pd.Categorical.from_codes(codes, categories=syms)
+    df.attrs["rows"] = rows
     return df
 
 sess = ds.dataset([str(f) for f in (DATA_ROOT / "table=sessions").rglob("*.parquet")], format="parquet", partitioning="hive",
@@ -204,7 +217,7 @@ hl_l1["lmid"] = np.log((hl_l1.bid_px + hl_l1.ask_px) / 2)
 hl_tr["notional"] = hl_tr.price * hl_tr.size
 
 BN = list(PAIRS.values())
-bn_l1 = load("l1", "BINANCE_FUTURES", ["ts_txn_ns", "ts_recv_ns", "bid_px", "ask_px"], "ts_txn_ns", BN, derive=lambda b: {
+bn_l1 = load("l1", "BINANCE_FUTURES", ["ts_txn_ns", "ts_recv_ns", "bid_px", "ask_px"], "ts_txn_ns", BN, sort_t=True, derive=lambda b: {
     "t": np.round(b.column("ts_txn_ns").to_numpy() / 1e6).astype("int64"),
     "recv": b.column("ts_recv_ns").to_numpy() / 1e6,
     "lmid": np.log((b.column("bid_px").to_numpy() + b.column("ask_px").to_numpy()) / 2)})
