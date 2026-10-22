@@ -106,7 +106,7 @@ plt.rcParams.update({
 # %%
 DATA_ROOT = Path("../market_data_v2/normalized")
 SYMBOL = "HYPE-USD-PERP"
-DATA_END_UTC = "2026-10-20 00:30"   # ASSUMPTION: sample frozen here (local data ends 00:35; was 2026-10-19 06:00 in the 10-20 run) so the findings match while the local sync is still adding files; None = use all
+DATA_END_UTC = "2026-10-21 21:00"   # ASSUMPTION: capture ends 10-21 20:54 (VM manifest); holes from the still-running local sync are handled as coverage gaps below. None = use all
 TRAIN_FRAC = 0.6            # ASSUMPTION: chronological 60/40 split of *covered* time; every parameter is fit on train only.
 # Coverage: the local copy can have holes (missing hours, outages, a sync still in progress). We only work inside
 # segments where both feeds are live.
@@ -172,9 +172,11 @@ def _path_sym(s):
 
 def load(table, venue, symbol, cols):
     p = DATA_ROOT / f"table={table}" / f"venue={venue}" / f"symbol={_path_sym(symbol)}"
-    return ds.dataset(p, format="parquet", partitioning="hive").to_table(columns=cols).to_pandas()
+    files = [str(f) for f in p.rglob("*.parquet")]   # skips in-flight *.partial sync files
+    return ds.dataset(files, format="parquet").to_table(columns=cols).to_pandas()
 
-sess = ds.dataset(DATA_ROOT / "table=sessions", format="parquet", partitioning="hive").to_table().to_pandas()
+sess = ds.dataset([str(f) for f in (DATA_ROOT / "table=sessions").rglob("*.parquet")], format="parquet", partitioning="hive",
+                  partition_base_dir=str(DATA_ROOT / "table=sessions")).to_table().to_pandas()   # *.parquet skips in-flight sync files
 hl_open = (sess[(sess.venue == "HYPERLIQUID") & (sess.kind == "ws") & (~sess.resumed)]
            .groupby("ordinal").opened_ns.min())
 

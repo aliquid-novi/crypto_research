@@ -53,6 +53,7 @@ from pathlib import Path
 import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
+import pyarrow as pa
 import pyarrow.dataset as ds
 import statsmodels.api as sm
 from scipy import optimize, stats
@@ -80,6 +81,10 @@ plt.rcParams.update({
 
 # %%
 DATA_ROOT = Path("../market_data_v2/normalized")
+# Sample. Only windows where every input (HL l1 + trades for the 6 symbols, Binance l1 + trades for the 6 pairs) is fully
+# synced from the VM. A new segment starts at each window edge, each reconnect and each feed hole, and no gap spans one.
+DATA_WINDOWS = [("2026-10-18 03:14", "2026-10-20 18:00"), ("2026-10-21 00:00", "2026-10-21 17:00")]   # ASSUMPTION: set from the sync state at run time
+MAX_HOLE_MS = 30_000    # ASSUMPTION: no visible block on any of the 6 instruments for 30 s = feed hole (union gaps are ~100 ms)
 
 # HL symbol -> Binance USDT-perp. ASSUMPTION: xyz:SP500 is paired with Binance SPY (ETF ~ index/10;
 # returns comparable, levels not). xyz:CL ~ CL-USDT, xyz:TSLA ~ TSLA-USDT.
@@ -111,9 +116,9 @@ HAZ_STEP, HAZ_TMAX = 10, 600       # within-gap hazard grid (ms).
 # a forecast made "at block n" can only use what has arrived by then. Q1-Q4, the hazard and the lead analysis stay
 # pure exchange-time descriptions of the process. Two scenarios are run side by side:
 LATENCY_SCENARIOS = {
-    # Mark's figure (2026-10-19) for HL block latency only. Applying it to Binance ("bn") is an agent extension, not Mark's,
-    # and should be dropped at the next rerun. It has no numerical effect (0.5 ms is below the 1 ms timestamp resolution).
-    "N(0.50, 0.05) ms": dict(kind="normal", hl=(0.50, 0.05), bn=(0.50, 0.05)),
+    # Mark's figure (2026-10-19) for HL block latency only. Binance events count at their exchange time (bn=None). Until
+    # 2026-10-21 the same N(0.50, 0.05) was also applied to Binance (an agent extension, no numerical effect at 1 ms resolution).
+    "N(0.50, 0.05) ms": dict(kind="normal", hl=(0.50, 0.05), bn=None),
     # Each message's actual arrival on the VM (ts_recv). ASSUMPTION: VM clock and exchange clocks are in sync.
     "measured ts_recv": dict(kind="recv"),
 }
@@ -138,24 +143,52 @@ def log_trial(**kw):
 #   ASSUMPTION: `T` is the closest Binance analogue to HL block time. Binance trade `E` lags `T` by ~150 ms.
 
 # %%
-def _sym(s):
-    return s.replace("", ":")   # rclone writes ':' as U+F03A in Windows folder names
+def _in_windows(col, typ):
+    f = None
+    for a, b in DATA_WINDOWS:   # bounds in the column's own type (Binance ts_txn_ns is stored as double)
+        lo, hi = (pa.scalar(float(v) if pa.types.is_floating(typ) else v, typ) for v in (pd.Timestamp(a).value, pd.Timestamp(b).value))
+        e = (ds.field(col) >= lo) & (ds.field(col) < hi)
+        f = e if f is None else f | e
+    return f
 
-def load(table, venue, cols):
-    d = ds.dataset(DATA_ROOT / f"table={table}", format="parquet", partitioning="hive")
-    df = d.to_table(filter=ds.field("venue") == venue, columns=cols + ["symbol"]).to_pandas()
-    df["symbol"] = df["symbol"].astype(str).map(_sym)
+def load(table, venue, cols, ts_col, syms, derive=None):
+    """Rows of `syms` inside DATA_WINDOWS, read batch by batch into preallocated columns (Binance BTC l1 is ~1.4M rows/h,
+    so the raw columns don't fit in memory at once). `derive(batch) -> {name: array}` keeps only what's needed.
+    The collector renamed the `xyz:` folders to `xyz_`; the old copies (':' written as U+F03A) duplicate the first 9 h
+    and are skipped."""
+    derive = derive or (lambda b: {c: b.column(c).to_numpy(zero_copy_only=False) for c in cols})
+    folders = {s.replace(":", "_"): s for s in syms}
+    base = DATA_ROOT / f"table={table}" / f"venue={venue}"
+    files = [str(f) for k in folders for f in (base / f"symbol={k}").rglob("*.parquet")]   # skips in-flight *.partial sync files
+    d = ds.dataset(files, format="parquet", partitioning="hive", partition_base_dir=str(base))
+    flt = ds.field("symbol").isin(list(folders)) & _in_windows(ts_col, d.schema.field(ts_col).type)
+    n = d.count_rows(filter=flt)
+    out, codes, i = None, np.empty(n, np.int8), 0
+    for b in d.to_batches(columns=cols + ["symbol"], filter=flt):
+        m = b.num_rows
+        if m == 0:
+            continue
+        new = derive(b)
+        out = out or {k: np.empty(n, v.dtype) for k, v in new.items()}
+        for k, v in new.items():
+            out[k][i:i + m] = v
+        codes[i:i + m] = pd.Categorical(b.column("symbol").to_pandas().map(folders), categories=syms).codes
+        i += m
+    assert i == n
+    df = pd.DataFrame(out, copy=False)
+    df["symbol"] = pd.Categorical.from_codes(codes, categories=syms)
     return df
 
-sess = ds.dataset(DATA_ROOT / "table=sessions", format="parquet", partitioning="hive").to_table().to_pandas()
+sess = ds.dataset([str(f) for f in (DATA_ROOT / "table=sessions").rglob("*.parquet")], format="parquet", partitioning="hive",
+                  partition_base_dir=str(DATA_ROOT / "table=sessions")).to_table().to_pandas()   # *.parquet skips in-flight sync files
 hl_open = (sess[(sess.venue == "HYPERLIQUID") & (sess.kind == "ws") & (~sess.resumed)]
            .groupby("ordinal").opened_ns.min())
 print("HL ws connections (ordinal -> opened):", {k: str(pd.to_datetime(v)) for k, v in hl_open.items()})
 
-hl_l1 = load("l1", "HYPERLIQUID", ["ts_exch_ns", "ts_recv_ns", "conn_ordinal", "bid_px", "ask_px"])
-hl_tr = load("trades", "HYPERLIQUID", ["ts_exch_ns", "ts_recv_ns", "conn_ordinal", "price", "size"])
-hl_l1 = hl_l1[hl_l1.symbol.isin(SYMS)]
-hl_tr = hl_tr[hl_tr.symbol.isin(SYMS)]
+hl_l1 = load("l1", "HYPERLIQUID", ["ts_exch_ns", "ts_recv_ns", "conn_ordinal", "bid_px", "ask_px"], "ts_exch_ns", SYMS)
+hl_tr = load("trades", "HYPERLIQUID", ["ts_exch_ns", "ts_recv_ns", "conn_ordinal", "price", "size"], "ts_exch_ns", SYMS)
+for df in (hl_l1, hl_tr):
+    df["symbol"] = df.symbol.astype(str)     # small tables: plain strings, so groupbys behave as before
 
 def drop_replays(df, name):
     opened = df.conn_ordinal.map(hl_open)
@@ -170,13 +203,34 @@ for df in (hl_l1, hl_tr):
 hl_l1["lmid"] = np.log((hl_l1.bid_px + hl_l1.ask_px) / 2)
 hl_tr["notional"] = hl_tr.price * hl_tr.size
 
-bn_l1 = load("l1", "BINANCE_FUTURES", ["ts_txn_ns", "ts_recv_ns", "bid_px", "ask_px"])
-bn_tr = load("trades", "BINANCE_FUTURES", ["ts_trade_ns", "ts_recv_ns", "price", "size"])
-bn_l1["t"] = np.round(bn_l1.ts_txn_ns / 1e6).astype("int64")
-bn_tr["t"] = bn_tr.ts_trade_ns // 1_000_000
-for df in (hl_l1, hl_tr, bn_l1, bn_tr):
+BN = list(PAIRS.values())
+bn_l1 = load("l1", "BINANCE_FUTURES", ["ts_txn_ns", "ts_recv_ns", "bid_px", "ask_px"], "ts_txn_ns", BN, derive=lambda b: {
+    "t": np.round(b.column("ts_txn_ns").to_numpy() / 1e6).astype("int64"),
+    "recv": b.column("ts_recv_ns").to_numpy() / 1e6,
+    "lmid": np.log((b.column("bid_px").to_numpy() + b.column("ask_px").to_numpy()) / 2)})
+bn_tr = load("trades", "BINANCE_FUTURES", ["ts_trade_ns", "ts_recv_ns"], "ts_trade_ns", BN, derive=lambda b: {
+    "t": b.column("ts_trade_ns").to_numpy() // 1_000_000, "recv": b.column("ts_recv_ns").to_numpy() / 1e6})
+for df in (hl_l1, hl_tr):
     df["recv"] = df.ts_recv_ns / 1e6            # VM arrival, float ms (used only by the latency scenarios)
-bn_l1["lmid"] = np.log((bn_l1.bid_px + bn_l1.ask_px) / 2)
+
+# Segments: a new one starts at every reconnect, DATA_WINDOWS edge and union hole > MAX_HOLE_MS. The segment id replaces
+# conn_ordinal from here on, so no gap, pair of updates or forecast target spans a break.
+u = pd.concat([hl_l1[["t", "conn_ordinal"]], hl_tr[["t", "conn_ordinal"]]]).groupby("t").conn_ordinal.min()
+tv, cv = u.index.values, u.values
+win = np.searchsorted([pd.Timestamp(a).value // 1_000_000 for a, _ in DATA_WINDOWS], tv, "right")
+brk = np.r_[True, (cv[1:] != cv[:-1]) | (win[1:] != win[:-1]) | (np.diff(tv) > MAX_HOLE_MS)]
+SEG_START, SEG_END = tv[brk], np.r_[tv[np.flatnonzero(brk)[1:] - 1], tv[-1]]
+for df in (hl_l1, hl_tr):
+    df["conn_ordinal"] = np.searchsorted(SEG_START, df.t.values, "right") - 1
+
+def same_segment(a, b):
+    """True where times a <= b fall inside one segment."""
+    i, j = np.searchsorted(SEG_START, a, "right") - 1, np.searchsorted(SEG_START, b, "right") - 1
+    return (i == j) & (i >= 0) & (b <= SEG_END[np.clip(j, 0, None)])
+
+print(pd.DataFrame({"from": pd.to_datetime(SEG_START, unit="ms"), "to": pd.to_datetime(SEG_END, unit="ms"),
+                    "hours": (SEG_END - SEG_START) / 3.6e6}).round(2).to_string())
+print(f"covered {(SEG_END - SEG_START).sum() / 3.6e6:.2f} h in {len(SEG_START)} segments")
 
 span = pd.to_datetime([hl_l1.t.min(), hl_l1.t.max()], unit="ms")
 print(f"HL span {span[0]} -> {span[1]}  ({(span[1]-span[0]).total_seconds()/3600:.2f} h, "
@@ -500,21 +554,39 @@ plt.tight_layout(); plt.show()
 
 # %%
 class Stream:
-    """Sorted event times (ms) with O(log n) window counts / sums / as-of values. Windows are (a, b]."""
+    """Sorted event times (ms) with O(log n) window counts / sums / as-of values. Windows are (a, b].
+    Memory: counts use every event (`t`); the mid is stored only where it changes (`tm`, `lm`), which gives identical
+    as-of values. `keep` marks those events, so `lmid_each` rebuilds the mid at every event."""
     def __init__(self, t, val=None, lmid=None):
-        o = np.argsort(t, kind="stable")
-        self.t = np.asarray(t)[o]
-        self.cv = None if val is None else np.concatenate([[0.0], np.cumsum(np.asarray(val, float)[o])])
-        self.lm = None if lmid is None else np.asarray(lmid, float)[o]
+        t = np.asarray(t)
+        o = None if np.all(t[1:] >= t[:-1]) else np.argsort(t, kind="stable")
+        self.t = t if o is None else t[o]
+        self.cv = None if val is None else np.concatenate([[0.0], np.cumsum(np.asarray(val, float) if o is None else np.asarray(val, float)[o])])
+        self.tm = self.lm = self.keep = None
+        if lmid is not None:
+            lm = np.asarray(lmid, float) if o is None else np.asarray(lmid, float)[o]
+            self.keep = np.r_[True, lm[1:] != lm[:-1]]
+            self.tm, self.lm = self.t[self.keep], lm[self.keep]
     def count(self, a, b):
         return np.searchsorted(self.t, b, "right") - np.searchsorted(self.t, a, "right")
     def sum(self, a, b):
         return self.cv[np.searchsorted(self.t, b, "right")] - self.cv[np.searchsorted(self.t, a, "right")]
     def lmid_at(self, q):
-        i = np.searchsorted(self.t, q, "right") - 1
+        i = np.searchsorted(self.tm, q, "right") - 1
         return np.where(i >= 0, self.lm[np.clip(i, 0, None)], np.nan)
+    def lmid_each(self):
+        return self.lm[np.cumsum(self.keep) - 1]
     def absret_bps(self, a, b):
         return np.abs(self.lmid_at(b) - self.lmid_at(a)) * 1e4
+    def upto(self, cut):
+        """The same stream with every event after `cut` removed (views, no copy). Used by the truncation tests."""
+        s = object.__new__(Stream)
+        k = np.searchsorted(self.t, cut, "right")
+        s.t, s.cv = self.t[:k], None if self.cv is None else self.cv[:k + 1]
+        s.keep = None if self.keep is None else self.keep[:k]
+        km = 0 if self.tm is None else np.searchsorted(self.tm, cut, "right")
+        s.tm, s.lm = (None, None) if self.tm is None else (self.tm[:km], self.lm[:km])
+        return s
 
 def make_streams(hl_l1, hl_tr, bn_l1, bn_tr):
     S = {"hl_tr": Stream(hl_tr.t.values, hl_tr.notional.values), "hl_l1": Stream(hl_l1.t.values)}
@@ -524,7 +596,6 @@ def make_streams(hl_l1, hl_tr, bn_l1, bn_tr):
         S[f"bn_tr:{s}"] = Stream(bn_tr.t[bn_tr.symbol == b].values)
         S[f"hl_tr:{s}"] = Stream(hl_tr.t[hl_tr.symbol == s].values)
         S[f"hl_l1:{s}"] = Stream(hl_l1.t[hl_l1.symbol == s].values, lmid=hl_l1.lmid[hl_l1.symbol == s].values)
-    S["bn_l1"] = Stream(bn_l1.t[bn_l1.symbol.isin(PAIRS.values())].values)
     S["bn_tr"] = Stream(bn_tr.t[bn_tr.symbol.isin(PAIRS.values())].values)
     return S
 
@@ -547,7 +618,7 @@ def q3_table(bt, label_prefix=""):
     t = bt.t.values.astype(float)
     acts = {"n_tr (in block)": bt.n_tr.values.astype(float),
             "hl_tr_1s": STREAMS["hl_tr"].count(t - 1000, t).astype(float),
-            "bn_l1_1s": STREAMS["bn_l1"].count(t - 1000, t).astype(float)}
+            "bn_l1_1s": sum(STREAMS[f"bn_l1:{s}"].count(t - 1000, t) for s in SYMS).astype(float)}   # all 6 pairs
     nxt = bt.gap.shift(-1).values
     cur = bt.gap.values
     tr = bt.t.values <= T_SPLIT
@@ -626,7 +697,7 @@ def truncation_test(bt, sym=None, n_cuts=3):
     full, _ = build_features(bt, STREAMS, sym)
     for frac in np.linspace(0.3, 0.8, n_cuts):
         cut = bt.t.quantile(frac)
-        S_cut = make_streams(hl_l1[hl_l1.t <= cut], hl_tr[hl_tr.t <= cut], bn_l1[bn_l1.t <= cut], bn_tr[bn_tr.t <= cut])
+        S_cut = {k: v.upto(cut) for k, v in STREAMS.items()}   # every event after the cut removed
         part, _ = build_features(bt[bt.t <= cut], S_cut, sym)
         a, b = full.loc[part.index].values, part.values
         ok = np.allclose(a, b, equal_nan=True)
@@ -692,9 +763,7 @@ def latency_view(scen, seed=SEED):
     if scen["kind"] == "normal":
         mu, sd = scen["hl"]
         known = t + np.clip(rng.normal(mu, sd, len(t)), 0, None)
-        bmu, bsd = scen["bn"]
-        bn_known_l1 = bn_l1.t.values + np.clip(rng.normal(bmu, bsd, len(bn_l1)), 0, None)
-        bn_known_tr = bn_tr.t.values + np.clip(rng.normal(bmu, bsd, len(bn_tr)), 0, None)
+        bn_known_l1, bn_known_tr = bn_l1.t.values, bn_tr.t.values   # bn=None: Binance known at its exchange time
     else:
         known = blk_recv.loc[blk.t].values
         bn_known_l1, bn_known_tr = bn_l1.recv.values, bn_tr.recv.values
@@ -738,7 +807,7 @@ def lat_truncation_test(scen_name, sym=None):
     F_full, _, _, q = lat_features(bt, sym, K, S_full)
     for frac in (0.4, 0.7):
         cut = np.quantile(q, frac)
-        S_cut = {k: Stream(v.t[v.t <= cut], lmid=None if v.lm is None else v.lm[v.t <= cut]) for k, v in S_full.items()}
+        S_cut = {k: v.upto(cut) for k, v in S_full.items()}
         F_cut, _, _, _ = lat_features(bt, sym, K, S_cut)
         keep = q <= cut
         a, b = F_full.loc[keep].values, F_cut.loc[keep].values
@@ -799,6 +868,7 @@ for scen_name, scen in LATENCY_SCENARIOS.items():
     for s in [None] + SYMS:
         q5_rows.append(q5(blk if s is None else inst[s], s, s or "union", scen_name, K, S_bn))
 q5_all = pd.concat(q5_rows)
+del K, S_bn, bn_l1   # free memory: nothing below needs the raw Binance quotes (STREAMS keeps what it needs)
 q5_all.set_index(["latency", "set", "features"])[["n_test", "median staleness ms", "median target ms", "skill vs F0",
     "skill CI lo", "skill CI hi", "gain vs prev set", "gain CI lo", "gain CI hi", "coverage 80%", "median width ms", "MAE median ms"]]
 
@@ -966,7 +1036,7 @@ plt.tight_layout(); plt.show()
 def jump_events(s):
     b = STREAMS[f"bn_l1:{s}"]
     t = b.t.astype(float)
-    r = (b.lm - b.lmid_at(t - EVT_RET_MS)) * 1e4
+    r = (b.lmid_each() - b.lmid_at(t - EVT_RET_MS)) * 1e4
     cut = np.nanquantile(np.abs(r), EVT_Q)
     cand = np.where(np.abs(r) >= cut)[0]
     keep, last = [], -np.inf
@@ -989,6 +1059,7 @@ for s in SYMS:
     pb = (bn.lmid_at(G) - bn.lmid_at(tau - 1000)[:, None]) * 1e4 * sg[:, None]
     ph = (hl.lmid_at(G) - hl.lmid_at(tau - 1000)[:, None]) * 1e4 * sg[:, None]
     ok = ~np.isnan(pb).any(1) & ~np.isnan(ph).any(1) & (tau - 1000 > hl.t[0])
+    ok &= same_segment(tau - 1000, tau + EVT_WIN[-1])   # the whole window inside one HL segment (no hole/reconnect)
     evt[s] = {"bn": pb[ok].mean(0), "hl": ph[ok].mean(0), "tau": tau[ok], "sign": sg[ok]}
     b50, h50 = t50(evt[s]["bn"]), t50(evt[s]["hl"])
     evt_rows.append({"symbol": s, "group": GROUP[s], "n jumps": int(ok.sum()), "jump cut bps (50ms)": cut,
@@ -1030,8 +1101,8 @@ tau0 = evt[s]["tau"][np.nanargmax(np.abs(r_all))]
 lo, hi = tau0 - 1000, tau0 + 2000
 fig, ax = plt.subplots(figsize=(10, 3.6))
 for st, col, lab in [(bn, C_INK, "Binance BTC mid"), (hl, C_CRYPTO, "HL BTC mid")]:
-    m = (st.t >= lo) & (st.t <= hi)
-    tt = np.concatenate([[lo], st.t[m], [hi]]).astype(float)
+    m = (st.tm >= lo) & (st.tm <= hi)
+    tt = np.concatenate([[lo], st.tm[m], [hi]]).astype(float)
     yy = np.concatenate([[st.lmid_at(lo)], st.lm[m], [st.lmid_at(hi)]])
     ax.step(tt - tau0, (yy - st.lmid_at(tau0 - 1000)) * 1e4, where="post", color=col, lw=1.6, label=lab)
 bt = blk.t.values[(blk.t.values >= lo) & (blk.t.values <= hi)]
