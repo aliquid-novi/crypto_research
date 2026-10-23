@@ -22,28 +22,30 @@
 # too, which is where the clock itself is measured.
 
 # %% [markdown]
-# ## Summary (run of 2026-10-19 on 2026-10-18 data, 03:14–10:23 UTC, 7.2 h; n_trials = 155; reviewed 2026-10-21)
-# **Weak points first:** one Sunday morning, one 60/40 split, tradfi `xyz:` perps off-hours, no block height in the feed
-# (block counts are inferred), and the HL↔Binance clock offset is unverified. About 27 h has synced since; this run uses 7.2 h.
+# ## Summary (run of 2026-10-23: 48 h window 2026-10-18 03:14 → 10-20 03:14 UTC, 46.3 h covered in 21 segments; n_trials = 155)
+# **Weak points first**
+# * **The forecast skill levels and every tradfi number have not converged.** They moved well outside the 7.2 h CIs, because
+#   they depend on which session is in the sample. The window is Sunday + Monday, and the 60/40 split falls at **Mon 08:16 UTC**:
+#   train is mostly weekend, test is the Monday European + US sessions. The unconditional baseline F0 is therefore fit on a
+#   quieter regime than it is scored on, which flatters "skill vs F0". A day-by-day or weekday/weekend split would address it.
+# * The Monday US open is partly missing: feed holes 12:17–13:32 and 14:00–14:24 UTC.
+# * One sample of two days, one split. No block height in the feed (block counts are inferred). The HL↔Binance clock
+#   offset is unverified, and the `measured ts_recv` scenario assumes the VM and exchange clocks are in sync.
+# * The full ~89 h capture couldn't run on this machine (memory). This is the first 48 h, and it *contains* the earlier 7.2 h
+#   sample, so agreement with that run is not independent confirmation. The same 155 variants have now been evaluated twice.
+# * The Q3 bootstrap CIs treat autocorrelated gaps as independent (too narrow). The event-study jump threshold is a
+#   full-sample quantile (descriptive, not a tradeable rule).
 #
-# | Question | Result |
-# |---|---|
-# | Q1 distribution | Lattice: a **67.0 ms clock (σ 1.5 ms)** carries 65% of blocks, the rest spread over ~45–100 ms. Mean block 68.1 ms. Exponential is badly wrong. Every model is formally rejected (n = 80k). |
-# | Q2 autocorrelation | Single-block gaps **ρ(1) = −0.20** vs −0.001 from ms rounding: a short block is followed by a longer one. Raw-gap ρ(1) = 0.18 is mostly visibility. |
-# | Q3 activity | Doesn't move the clock (single-block medians 67 vs 67 ms). |
-# | Q4 lags | OOS R² of log next gap 0.09 (union), 0.08–0.22 per instrument. |
-# | Q5 forecast, interval | Union pinball skill vs unconditional 14.1% [13.4, 14.8] at ~zero latency; **10.7% [10.1, 11.3]** on measured `ts_recv` (block known ~280 ms late). |
-# | Binance in the gap | Timing: tiny hazard gain, clock test null. Price: HL reaches half a Binance jump 210 ms (HYPE) to 530 ms (BTC) later. |
+# | Question | 48 h result | 7.2 h (Sun am) | Converged? |
+# |---|---|---|---|
+# | Q1 distribution | Lattice: **67.0 ms clock (σ 1.8 ms)** carries 55% of blocks. Mean block 68.3 ms. Exponential badly wrong; every model formally rejected (n = 635k test). | 67.0 ms, σ 1.5, 65% | clock yes; core share moved |
+# | Q2 autocorrelation | Single-block **ρ(1) = −0.20** (rounding alone: −0.001); −0.18 to −0.21 per instrument. Raw-gap ρ(1) 0.17 is mostly visibility. | −0.20 | yes |
+# | Q3 activity | Doesn't move the clock: single-block next-gap medians 67 vs 67 ms everywhere. | same | yes |
+# | Q4 lags | OOS R² of log next gap 0.10 (union); crypto 0.11–0.14, **tradfi 0.23–0.29**. | 0.09; 0.08–0.22 | union yes; tradfi no |
+# | Q5 forecast, interval | Union skill vs unconditional **19.5% [19.2, 19.7]** at ~zero latency; **12.7% [12.5, 13.0]** on measured `ts_recv` (block known ~300 ms late). Across both scenarios, tradfi 24–28%, crypto 14–17%. | 14.1%; 10.7%; tradfi 5–17% | no |
+# | Binance in the gap | Timing: hazard gain ≤ 1.1% (union slightly *worse*), clock test |ρ| < 0.01. Price: HL reaches half a Binance jump 290 ms (HYPE) to 540 ms (BTC) later; 610 ms for SP500. | hazard tiny, clock null; 210–530 ms | timing yes; HYPE lag and tradfi lead no |
 #
-# **Review notes (2026-10-21):**
-# * The "N(0.50, 0.05) ms" scenario is Mark's figure for **HL** block latency. The notebook also applied it to Binance; that was an
-#   agent extension, not Mark's. It has no numerical effect (0.5 ms is below the 1 ms timestamp resolution, so the scenario is
-#   zero latency). It should be dropped from Binance at the next rerun.
-# * The `measured ts_recv` target mixes the VM clock with exchange time, so it assumes the clocks are in sync (unverified).
-# * The Q3 bootstrap CIs resample autocorrelated gaps as if they were independent, so they are too narrow. The Q3 result is a null anyway.
-# * The event-study jump threshold is a full-sample quantile. That's fine for a description, but it isn't a tradeable rule.
-#
-# Findings in §12; open questions at the end.
+# Findings in §12, then assumptions and open questions.
 
 # %%
 import json
@@ -63,6 +65,7 @@ from sklearn.metrics import log_loss
 from statsmodels.stats.diagnostic import acorr_ljungbox
 from statsmodels.tsa.stattools import acf
 
+pa.set_memory_pool(pa.system_memory_pool())   # freed Arrow buffers go back to the OS (the default pool keeps them)
 warnings.filterwarnings("ignore", category=RuntimeWarning)
 pd.set_option("display.width", 200, "display.max_columns", 40, "display.precision", 4)
 
@@ -83,7 +86,8 @@ plt.rcParams.update({
 DATA_ROOT = Path("../market_data_v2/normalized")
 # Sample. Only windows where every input (HL l1 + trades for the 6 symbols, Binance l1 + trades for the 6 pairs) is fully
 # synced from the VM. A new segment starts at each window edge, each reconnect and each feed hole, and no gap spans one.
-DATA_WINDOWS = [("2026-10-18 03:14", "2026-10-20 18:00"), ("2026-10-21 00:00", "2026-10-21 17:00")]   # ASSUMPTION: set from the sync state at run time
+DATA_WINDOWS = [("2026-10-18 03:14", "2026-10-20 03:14")]   # ASSUMPTION: first 48 h of capture (contains the earlier 7.2 h sample). The full ~89 h
+                                                            # (to 10-21 20:31:43) needs ~15-20 GB and was stopped by the machine's memory limit twice.
 MAX_HOLE_MS = 30_000    # ASSUMPTION: no visible block on any of the 6 instruments for 30 s = feed hole (union gaps are ~100 ms)
 
 # HL symbol -> Binance USDT-perp. ASSUMPTION: xyz:SP500 is paired with Binance SPY (ETF ~ index/10;
@@ -190,6 +194,8 @@ def load(table, venue, cols, ts_col, syms, derive=None, sort_t=False):
     df = pd.DataFrame(out, copy=False)
     df["symbol"] = pd.Categorical.from_codes(codes, categories=syms)
     df.attrs["rows"] = rows
+    del sets
+    pa.default_memory_pool().release_unused()
     return df
 
 sess = ds.dataset([str(f) for f in (DATA_ROOT / "table=sessions").rglob("*.parquet")], format="parquet", partitioning="hive",
@@ -605,7 +611,8 @@ def make_streams(hl_l1, hl_tr, bn_l1, bn_tr):
     S = {"hl_tr": Stream(hl_tr.t.values, hl_tr.notional.values), "hl_l1": Stream(hl_l1.t.values)}
     for s in SYMS:
         b = PAIRS[s]
-        S[f"bn_l1:{s}"] = Stream(bn_l1.t[bn_l1.symbol == b].values, lmid=bn_l1.lmid[bn_l1.symbol == b].values)
+        r = bn_l1.attrs["rows"][b]   # contiguous block sorted by t, so the stream is a view (no copy)
+        S[f"bn_l1:{s}"] = Stream(bn_l1.t.values[r], lmid=bn_l1.lmid.values[r])
         S[f"bn_tr:{s}"] = Stream(bn_tr.t[bn_tr.symbol == b].values)
         S[f"hl_tr:{s}"] = Stream(hl_tr.t[hl_tr.symbol == s].values)
         S[f"hl_l1:{s}"] = Stream(hl_l1.t[hl_l1.symbol == s].values, lmid=hl_l1.lmid[hl_l1.symbol == s].values)
@@ -783,7 +790,7 @@ def latency_view(scen, seed=SEED):
     K = pd.Series(np.maximum.accumulate(known), index=blk.t.values)   # block n usable only once blocks <= n are all known
     S = {}
     for s in SYMS:
-        m1, m2 = (bn_l1.symbol == PAIRS[s]).values, (bn_tr.symbol == PAIRS[s]).values
+        m1, m2 = bn_l1.attrs["rows"][PAIRS[s]], (bn_tr.symbol == PAIRS[s]).values
         S[f"bn_l1:{s}"] = Stream(bn_known_l1[m1], lmid=bn_l1.lmid.values[m1])
         S[f"bn_tr:{s}"] = Stream(bn_known_tr[m2])
     return K, S
@@ -1048,8 +1055,11 @@ plt.tight_layout(); plt.show()
 # %%
 def jump_events(s):
     b = STREAMS[f"bn_l1:{s}"]
-    t = b.t.astype(float)
-    r = (b.lmid_each() - b.lmid_at(t - EVT_RET_MS)) * 1e4
+    lme, r, CH = b.lmid_each(), np.empty(len(b.t)), 10_000_000   # in chunks: BTC has >100M updates
+    for i in range(0, len(b.t), CH):
+        r[i:i + CH] = (lme[i:i + CH] - b.lmid_at(b.t[i:i + CH].astype(float) - EVT_RET_MS)) * 1e4
+    del lme
+    t = b.t
     cut = np.nanquantile(np.abs(r), EVT_Q)
     cand = np.where(np.abs(r) >= cut)[0]
     keep, last = [], -np.inf
@@ -1057,7 +1067,7 @@ def jump_events(s):
         if t[i] - last >= EVT_MIN_SEP:
             keep.append(i); last = t[i]
     keep = np.array(keep, int)
-    return t[keep], np.sign(r[keep]), cut
+    return t[keep].astype(float), np.sign(r[keep]), cut
 
 def t50(path):
     final = path[-1]
@@ -1155,55 +1165,89 @@ print(f"n_trials (model variants evaluated in this notebook): {len(TRIALS)}")
 pd.DataFrame(TRIALS).groupby("q").size()
 
 # %% [markdown]
-# ## 12. Findings (run of 2026-10-19 on the 2026-10-18 data; 7.2 h, n_trials = 155)
+# ## 12. Findings (run of 2026-10-23; 48 h window 10-18 03:14 → 10-20 03:14 UTC, 46.3 h covered; n_trials = 155)
 #
 # **Weak points first**
-# * 7.2 h of **one Sunday morning** (03:14–10:23 UTC), one train/test split. US equity and oil markets were closed, so the
-#   `xyz:` perps were off-hours.
+# * **Not converged: forecast skill levels and everything tradfi.** Between the 7.2 h run (Sunday morning) and this one, the
+#   union Q5 skill moved from 14.1% to 19.5% (and 10.7% to 12.7% on `ts_recv`), outside the earlier CIs. Tradfi Q4/Q5 roughly
+#   doubled, and the SP500 and TSLA lead profiles flipped sign. These depend on the session, and this sample has one weekend day
+#   and one weekday.
+# * **The train/test split straddles weekend → weekday** (split at Mon 08:16 UTC). F0 is fit on the quieter regime, so
+#   "skill vs F0" partly measures the regime change. Coverage of the F0 interval on test is 82% (nominal 80%), so the shift is
+#   modest for the union, but not checked per session.
+# * One window (Sun 03:14 → Tue 03:14 UTC). The US open is partly missing (holes 12:17–13:32 and 14:00–14:24 UTC Monday).
+#   It contains the 7.2 h sample, so agreement with that run isn't independent.
 # * There's no block height in the feed, so block counts are *inferred*.
 # * Q1–Q4, the hazard and the lead analysis are exchange-time descriptions. Only Q5 applies latency.
 # * The HL↔Binance clock offset is unverified. Every lead/lag number below includes it.
-# * The event study is thin for tradfi (SP500 17 jumps, TSLA 6, CL 3). Read those panels as anecdotes.
-# * (Review, 2026-10-21) The N(0.50, 0.05) ms scenario was also applied to Binance. That was an agent extension of Mark's HL figure,
-#   with no numerical effect. The Q3 bootstrap CIs ignore autocorrelation, so they are too narrow.
+# * The Q3 bootstrap CIs ignore autocorrelation (too narrow). At n ≈ 1M, almost every test is "significant", so read magnitudes.
 #
-# **Q1 Distribution.** Every candidate is formally rejected (chi² p ≈ 0, n = 80k). The best fit is a lattice:
-# **a 67.0 ms clock (σ 1.5 ms) carrying 65% of blocks, the rest spread over ~45–100 ms**. Mean block 68.1 ms (14.7/s);
-# ~53% of blocks are visible to the 6-instrument union. Exponential (memoryless) is badly wrong.
+# **Converged (7.2 h → 48 h): the block structure.** The 67 ms clock, single-block ρ(1) ≈ −0.20, Q3 null, the timing null
+# for Binance, the BTC event lag (~540 ms) and which instruments Binance helps most.
 #
-# **Q2 Autocorrelation.** Raw gaps: ρ(1) = 0.18, almost all of it visibility clustering. The clock: single-block gaps have
-# **ρ(1) = −0.20 vs −0.001 expected from ms rounding**. A short block is followed by a longer one (prev ≤ 55 ms → next
-# median 73; prev 80–100 → 66). The clock looks schedule-anchored with catch-up.
+# **Q1 Distribution.** Every candidate is formally rejected (chi² p ≈ 0, n = 635k test gaps). The best fit is still the lattice:
+# **a 67.0 ms clock (σ 1.8 ms) carrying 55% of blocks** (65% on Sunday morning), the rest spread over ~45–100 ms. Mean
+# block 68.3 ms (14.6/s). ~63% of blocks are visible to the 6-instrument union (53% Sunday morning). Exponential is badly wrong.
 #
-# **Q3 Activity.** It doesn't move the clock: single-block next-gap medians are 67 vs 67 ms after busy vs quiet blocks
-# (AUC 0.48–0.51). The big raw effects are visibility.
+# **Q2 Autocorrelation.** Raw gaps: ρ(1) = 0.17, mostly visibility clustering. The clock: single-block gaps have
+# **ρ(1) = −0.20 vs −0.001 expected from ms rounding**, and −0.18 to −0.21 on every instrument. A short block is followed by a
+# longer one (prev ≤ 55 ms → next median 72; prev 80–100 → 65). The clock looks schedule-anchored with catch-up.
 #
-# **Q4 Lags.** Jointly significant everywhere. OOS R² of log next gap: 0.09 (union), 0.08–0.22 (instruments).
+# **Q3 Activity.** It doesn't move the clock: single-block next-gap medians are 67 vs 67 ms after busy vs quiet blocks (union
+# AUC 0.485–0.49). A block with a trade in it is itself ~1 ms longer (68 vs 67, AUC 0.52), as in the 7.2 h run; that's at the
+# 1 ms timestamp resolution. The big raw effects are visibility.
+#
+# **Q4 Lags.** Jointly significant everywhere. OOS R² of log next gap: 0.10 (union), crypto 0.11–0.14, tradfi 0.23–0.29
+# (0.08–0.22 on Sunday morning). Activity adds 0.005–0.013 OOS R² given lags.
 #
 # **Q5 Forecast within an interval, with latency.**
-# * *N(0.50, 0.05) ms:* identical to zero latency (0.5 ms is below the 1 ms timestamp resolution). Union skill vs
-#   unconditional is **14.1% [13.4, 14.8]**, 10–17% per instrument. The 80% interval covers 79%; width 154 → 128 ms.
-# * *Measured `ts_recv`:* you learn about block n a median **280 ms** after it happened (~4 blocks later). The target becomes
-#   the residual wait to the next block after that moment (median 58 ms). Union skill drops to **10.7% [10.1, 11.3]**;
-#   per instrument 5% (TSLA) to 14%. Coverage stays at 72–79%.
-# * In both scenarios Binance adds the most for HYPE (+4.6 / +5.3%) and AAVE (+6.4 / +5.9%), and ≈ 0 for SP500 (+0.1 / +0.5%).
+# * *N(0.50, 0.05) ms (HL only; Binance at exchange time):* identical to zero latency at 1 ms resolution. Union skill vs
+#   unconditional is **19.5% [19.2, 19.7]**; most of it comes from lags alone (17.4%). The 80% interval covers 80%; the median
+#   width goes from 137 to 74 ms. Per instrument, crypto 16–17% and tradfi 25–28%.
+# * *Measured `ts_recv`:* you learn about block n a median **304 ms** after it happened (~4–5 blocks later). The target is the
+#   residual wait to the next block after that moment (median 48 ms). Union skill drops to **12.7% [12.5, 13.0]**;
+#   per instrument 14% (BTC) to 26% (TSLA). Coverage 78–80%.
+# * Binance gain over HL features (N(0.5) / `ts_recv`): AAVE +6.6 / +6.7%, CL +5.5 / +5.5%, TSLA +4.3 / +4.2%,
+#   HYPE +4.1 / +4.7%, BTC +2.1 / +2.3%, SP500 +1.0 / +1.3%; union +0.9 / +1.0%.
 #
-# **Binance inside the gap: timing.** The hazard gain is tiny (union 0.04% log-loss, ≤ 1.7% per instrument) and the clock
-# test is null. Binance predicts when an HL *instrument reprices*, not when the chain commits a block.
+# **Binance inside the gap: timing.** The hazard gain is ≤ 1.1% log-loss per instrument (AAVE, TSLA ~1%; BTC 0.15%; SP500 0).
+# On the union, adding Binance makes the test log-loss slightly *worse* (−0.19%, CI excludes 0). The clock test is
+# |Spearman ρ| < 0.01 everywhere (nonzero at n ≈ 1M, negligible in size). Binance predicts when an HL *instrument reprices*,
+# not when the chain commits a block.
 #
-# **Binance inside the gap: price (what the lead looks like, §9.4).** After a Binance jump, HL's mid reaches half the
-# Binance move **210 ms (HYPE), 330 ms (AAVE), 530 ms (BTC)** later. By +2 s it has caught up 89–97%. In the largest BTC
-# jump, HL's BTC mid doesn't move for ~430 ms and then steps up over ~400 ms. There are also **no visible HL blocks
-# from ~130 to ~300 ms** after that jump (one example; worth checking whether blocks stall after big moves).
-# Tradfi: TSLA/CL follow Binance with a lag similar to the crypto pairs, on very few events. SP500 vs SPY has no lead
-# (the correlation profile peaks at +260 ms).
+# **Binance inside the gap: price (§9.3–9.4).** After a Binance jump, HL's mid reaches half the Binance move
+# **290 ms (HYPE), 350 ms (AAVE), 540 ms (BTC)** later. Tradfi: TSLA 370, CL 450, SP500 610 ms, now on 188–218 jumps each
+# (3–17 before). By +2 s, HL has caught up 81% (SP500) to ~100%. The within-gap Binance return explains OOS R² 0.10 of the
+# next HL mid change for AAVE and TSLA, 0.04–0.05 for HYPE/SP500/CL and 0.006 for BTC; sign hit-rate 75–91%. Lead-profile peaks
+# sit at −180 to −490 ms except TSLA (+220 ms, but the profile is flat: 0.41 at the peak vs 0.38 at 0).
+# The largest BTC jump (Mon 00:46:40 UTC): HL's BTC mid doesn't move for ~480 ms, then steps up over ~1.5 s and reaches
+# ~60% of the Binance move by +1.9 s. HL blocks keep arriving every ~60–130 ms throughout, so this example shows **no block
+# stall** (the 7.2 h example had a 130–300 ms hole).
 #
-# **Crypto vs tradfi.** Same chain clock. The differences are visibility (TSLA sees 3% of blocks, BTC 32%) and how tightly
-# the HL mid tracks the Binance pair.
+# **Crypto vs tradfi.** Same chain clock (80–85% of tradfi timestamps coincide with crypto ones). With a weekday in the
+# sample, tradfi visibility rose (TSLA 3% → 12% of blocks; BTC 41%), and tradfi gaps became the *more* forecastable ones.
+# Whether that's the US session or Monday in general isn't separable here.
+#
+# **Assumptions** (all marked `# ASSUMPTION:` in the code)
+# * Sample = the first 48 h of capture; the full ~89 h ran out of memory twice on this machine.
+# * A feed hole = no visible block on any of the 6 instruments for 30 s; segments also break at reconnects and window edges.
+# * xyz:SP500 ↔ Binance SPY (returns comparable, levels not); xyz:CL ↔ CL-USDT; xyz:TSLA ↔ TSLA-USDT.
+# * Binance `T` (matching-engine time) is the closest analogue to HL block time.
+# * Chronological 60/40 split by HL block time, no shuffling.
+# * Distribution fits use gaps ≤ 600 ms; "single-block" = P(k=1 | gap) ≥ 0.90 under the train fit (cut = 100 ms).
+# * k (invisible blocks per gap) is independent of block durations (not exactly true; k-weights are descriptive).
+# * "High activity" = top quintile of the train activity measure.
+# * Gradient boosting hyperparameters fixed and untuned.
+# * `measured ts_recv` assumes the VM and exchange clocks are in sync.
+# * Event-study jump = top 0.5% of |50 ms Binance return| per pair (full-sample quantile), jumps ≥ 2 s apart.
 #
 # **Open questions for Mark**
-# 1. The ~200 ms floor on HL `ts_recv − ts_exch` rules out 0.5 ms end-to-end (see the chat note). Is the 0.5 ms you heard
-#    about something else, e.g. block-commit → publish inside the node?
+# 1. The ~200 ms floor on HL `ts_recv − ts_exch` (median staleness now 304 ms) rules out 0.5 ms end-to-end. Is the 0.5 ms you
+#    heard about something else, e.g. block-commit → publish inside the node?
 # 2. Do you want to test the "phase-locked 67 ms grid with catch-up" idea directly? What would falsify it?
-# 3. Do blocks stall after large moves? (the 130–300 ms hole in the BTC example) That's testable on the union stream.
-# 4. Rerun on weekday data, including the US cash session, before reading anything into the tradfi rows.
+# 3. Block stalls after large moves: the 48 h largest BTC jump shows none. Still worth testing on the union stream, or drop it?
+# 4. For the non-converged parts (skill levels, tradfi), which split do you believe is the right one: day by day,
+#    weekday vs weekend, or US cash session vs not? (Like question 6 in `hl_mm_baseline`.) And should train/test be split
+#    within each day rather than across the weekend → weekday boundary?
+# 5. On the union, Binance features made the hazard model slightly worse out of sample. Is that worth a look, or is the
+#    per-instrument view the only one you care about?
