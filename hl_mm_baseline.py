@@ -21,7 +21,7 @@
 # test (§6), fill bounds (§7) and trial counter (§9).
 #
 # **Weak points up front**
-# * Very little data: the covered segments printed in §2 (a weekend, with holes), and one 60/40 chronological split.
+# * Little data: the covered segments printed in §2 (~3.7 days, Sunday to Wednesday, with holes), and one 60/40 chronological split.
 # * Fills are *simulated* from public trades. There's no queue position, our orders don't affect the book, and partial fills are ignored.
 #   The truth is somewhere between the `through` (pessimistic) and `touch` (optimistic) bounds.
 # * The HYPE spread is 1 tick (~0.13 bps) 73% of the time, so at the touch almost everything hinges on queue position, which we can't see.
@@ -32,9 +32,9 @@
 #   post-trade book and then "filled" by that trade. A feasible setting needs `ORDER_DELAY_MS` ≥ feed lag + order entry.
 
 # %% [markdown]
-# ## Summary (run of 2026-10-22; sample 2026-10-18 03:14 → 2026-10-20 00:30 UTC; 43.6 covered h; n_trials = 27 this run)
+# ## Summary (run of 2026-10-22; sample 2026-10-18 03:14 → 2026-10-21 20:31 UTC; 87.6 covered h; n_trials = 27 this run)
 # **Bottom line:** on HYPE, no quoter here makes money under either fill bound, even before fees. The extended micro-price
-# beats the mid by ~3–4% MSE at 250–500 ms; at 100 ms nothing beats the mid by more than 1%.
+# beats the mid by ~3% MSE at 250–500 ms; at 100 ms nothing beats the mid by more than 1%.
 #
 # **Read this first.** The quoting results use `ORDER_DELAY_MS` = 0 on the VM clock. That lets a quote be filled by trades
 # that executed on the exchange ~300 ms *before* the quote was sent, so the quoting section is a zero-latency simulation,
@@ -43,41 +43,49 @@
 # timing; don't rely on them until they're rerun with `ORDER_DELAY_MS` ≥ feed lag + order entry. The fair-value section
 # (§3.1) is not affected: it only compares what's known at t with the mid known at t + h.
 #
-# **Data.** 43.6 covered hours in three segments. Two feed holes on Monday 10-19 (12:16–13:32 and 14:00–14:23 UTC) are
-# excluded, and inventory is flattened at each. Train (26.2 h): Sunday 03:14 → Monday 05:24 UTC. Test (17.4 h): Monday
-# 05:24 → Tuesday 00:30 UTC, so it now includes Monday's European and US hours. This is still one 60/40 split.
-# Clock: VM (`ts_recv`), HL data lands a median 305 ms after the block (min 191, p99 812).
+# **Second weak point: fair value depends on the test period.** With twice the data, the 500 ms skill of the extended
+# micro-price fell from +4.1% [3.9, 4.3] to +3.4% [3.2, 3.5], outside the previous CI, and the weighted mid's 250 ms skill
+# flipped sign. Same method, different test days. The CIs only cover sampling noise within one test period, not the
+# day-to-day variation, so treat them as too narrow.
 #
-# **Fair value (test, n = 627,820): MSE skill vs the plain mid, 95% block-bootstrap CI**
+# **Data.** All synced capture: 87.6 covered hours of 89.3 wall-clock, in three segments. Two feed holes on Monday 10-19
+# (12:16–13:32 and 14:00–14:23 UTC) are excluded, and inventory is flattened at each. The last ~23 min of capture
+# (10-21 20:31–20:54) never synced and is not used. Train (52.6 h): Sunday 10-18 03:14 → Tuesday 10-20 09:28 UTC.
+# Test (35.1 h): Tuesday 10-20 09:28 → Wednesday 10-21 20:31 UTC. Still one 60/40 split. The test period is busier than
+# before: the mid moves in 17.4% of 100 ms steps (was 13.6%). Clock: VM (`ts_recv`), HL data lands a median 309 ms after
+# the block (min 191, p99 873).
+#
+# **Fair value (test, n = 1,261,848): MSE skill vs the plain mid, 95% block-bootstrap CI**
 #
 # | | 100 ms | 250 ms | 500 ms |
 # |---|---|---|---|
-# | Weighted mid | −15.9% [−17.9, −13.9] | +1.5% [0.7, 2.2] | +3.3% [2.9, 3.8] |
-# | Micro-price (textbook) | +0.9% [0.9, 1.0] | +1.0% [1.0, 1.1] | +0.9% [0.9, 0.9] |
-# | Micro-price (extended) | −4.9% [−5.2, −4.6] | +2.9% [2.6, 3.2] | **+4.1% [3.9, 4.3]** |
+# | Weighted mid | −21.8% [−25.1, −19.0] | −1.7% [−2.7, −0.8] | +1.4% [0.8, 2.0] |
+# | Micro-price (textbook) | +0.7% [0.7, 0.8] | +0.8% [0.7, 0.8] | +0.6% [0.6, 0.7] |
+# | Micro-price (extended) | −1.2% [−1.4, −1.1] | +3.0% [2.8, 3.1] | **+3.4% [3.2, 3.5]** |
 #
-# The textbook micro-price only allows ±1-tick moves per step, so its adjustment is 1.8–8.1× too small (calibration
+# The textbook micro-price only allows ±1-tick moves per step, so its adjustment is 2.3–10.4× too small (calibration
 # slopes). The extended version (±4 ticks) is my modification, not the textbook method; it over-reacts at 100 ms (slope
-# 0.32) and is slightly undersized at 500 ms (slope 1.43).
+# 0.42), is about right at 250 ms (1.04) and is undersized at 500 ms (1.85).
 #
 # **Quoting** (zero-latency fills, see "Read this first"; 1 HYPE per quote, mark-to-mid, no fees)
-# * All 18 combinations lose money; every PnL/h CI excludes zero (−$2.1 to −$5.4 per hour).
-# * Spread captured at the fill is negative for **every** strategy now (−0.08 to −0.68 bps), so read markouts, not capture.
-# * AS(micro-price) vs AS(mid), 1 s markout under `touch`: −0.41 vs −0.56 (Δ 100), −0.51 vs −0.67 (Δ 250), −0.65 vs −0.77 bps
+# * All 18 combinations lose money; every PnL/h CI excludes zero (−$3.7 to −$6.6 per hour).
+# * Spread captured at the fill is negative for every strategy (−0.04 to −0.67 bps), so read markouts, not capture.
+# * AS(micro-price) vs AS(mid), 1 s markout under `touch`: −0.36 vs −0.47 (Δ 100), −0.49 vs −0.59 (Δ 250), −0.63 vs −0.72 bps
 #   (Δ 500); the CIs don't overlap. Under `through` the gap is 0.03–0.04 bps and the CIs overlap.
-# * Faster requoting loses less per fill: AS(micro-price) [touch] −0.41 / −0.51 / −0.65 bps at Δ = 100 / 250 / 500 ms.
-# * Join-the-touch is the bound-sensitive one: −0.25 to −0.33 bps under `touch`, −0.91 to −1.05 under `through`.
+# * Faster requoting loses less per fill: AS(micro-price) [touch] −0.36 / −0.49 / −0.63 bps at Δ = 100 / 250 / 500 ms.
+# * Join-the-touch is the bound-sensitive one: −0.23 to −0.32 bps under `touch`, −0.82 to −1.04 under `through`.
 #
-# **What changed vs the 10-20 run** (26.8 h, test = Sunday evening to Monday morning)
-# * Fair value is stable: the extended micro-price went from +2.9% / +3.8% to +2.9% / +4.1% at 250 / 500 ms. The weighted mid's
-#   250 ms skill moved from +0.3% (CI spanning 0) to +1.5% [0.7, 2.2].
-# * Quoting got worse across the board: e.g. AS(micro-price) [touch] Δ 250 went from −0.34 to −0.51 bps at 1 s, and AS capture
-#   at the fill turned negative. The test period changed (it now includes Monday's US hours), so this is a different sample,
-#   not more of the same one.
-# * Trials: 27 variants in this run; 108 evaluated across the three runs of this notebook (54 + 27 + 27).
+# **What changed vs the 43.6 h run** (test was Monday 05:24 → Tuesday 00:30 UTC)
+# * Per-fill quoting results are stable: every 1 s markout moved by ≤ 0.1 bps (most slightly *less* negative), and every
+#   ordering above is unchanged. PnL/h is worse (−$2.1 to −$5.4 before) because there are more fills per hour in this test period.
+# * Fair value moved more than its CIs allow: extended micro-price +2.9% / +4.1% → +3.0% / +3.4% at 250 / 500 ms; weighted
+#   mid +1.5% / +3.3% → −1.7% / +1.4%; at 100 ms the extended micro-price went from −4.9% to −1.2%.
+# * An interim run on 66.1 h (not written into the notebook) matched the 43.6 h run within 0.2 pp, so the shift comes
+#   from the later test days, not from more data in general.
+# * Trials: 27 variants in this run; 162 evaluated across the five runs of this notebook (54 + 27 + 27 + 27 interim + 27).
 #
 # Details are in §10 Findings; the full assumption list and open questions are at the end.
-
+#
 # %%
 import warnings
 from pathlib import Path
@@ -764,7 +772,7 @@ plt.tight_layout(); plt.show()
 print(f"n_trials (evaluated variants in this notebook): {len(TRIALS)}")
 pd.DataFrame(TRIALS).groupby("part").size()
 # %% [markdown]
-# ## 10. Findings (run of 2026-10-22; sample 2026-10-18 03:14 → 2026-10-20 00:30 UTC; 43.6 covered h; n_trials = 27)
+# ## 10. Findings (run of 2026-10-22; sample 2026-10-18 03:14 → 2026-10-21 20:31 UTC; 87.6 covered h; n_trials = 27)
 # *Prose written to match the executed tables above. If they disagree after a re-run, trust the tables.*
 #
 # **Weak points first**
@@ -772,36 +780,39 @@ pd.DataFrame(TRIALS).groupby("part").size()
 #   executed ~300 ms before the quote was sent (zero latency in exchange time), and some are placed after the post-trade book has
 #   arrived. Capture at the fill is negative for every strategy, for that reason. The relative quoting claims below are not
 #   reliable until rerun with `ORDER_DELAY_MS` ≥ feed lag + order entry. The fair-value results are not affected.
-# * **Data.** 43.6 covered hours, one 60/40 split, two feed holes on Monday excluded. Train is Sunday plus Monday's Asia
-#   session; test is Monday 05:24 → Tuesday 00:30 UTC. The mid moves in 13.6% of 100 ms intervals in test.
+# * **Fair-value skill depends on the test period.** Moving the test window from Mon–Tue to Tue–Wed shifted the extended
+#   micro-price's 500 ms skill outside its previous CI (+4.1% [3.9, 4.3] → +3.4% [3.2, 3.5]) and flipped the weighted mid at
+#   250 ms. The bootstrap CIs don't capture day-to-day variation, so they are too narrow for "what will this do tomorrow".
+# * **Data.** 87.6 covered hours (all synced capture), one 60/40 split, two feed holes on Monday excluded. Train is Sunday 03:14
+#   → Tuesday 09:28 UTC; test is Tuesday 09:28 → Wednesday 20:31 UTC. The mid moves in 17.4% of 100 ms intervals in test.
 # * **Fills are simulated:** no queue position, no fees, 1 HYPE per quote, and our orders don't move the book. `touch` assumes the front of the queue.
 # * **The "extended" micro-price is my modification of Stoikov's estimator** (ASSUMPTION in KNOBS), not the textbook method.
-# * This notebook has now been run three times on growing data (108 evaluated variants in total). Read the CIs with that in mind.
+# * This notebook has now been run five times on growing data (162 evaluated variants in total). Read the CIs with that in mind.
 #
-# **Fair value (test, 100 ms grid, n = 627,820)**
-# * At **100 ms** nothing beats the mid by more than 1%. The weighted mid (−15.9%) and the extended micro-price (−4.9%) overshoot
-#   (calibration slopes 0.31 and 0.32). The textbook micro-price is +0.9% [0.9, 1.0] but undersized (slope 1.8).
-# * At **250 / 500 ms** the weighted mid is +1.5% [0.7, 2.2] / +3.3% [2.9, 3.8], and the extended micro-price is
-#   +2.9% [2.6, 3.2] / **+4.1% [3.9, 4.3]** (slopes 0.80 / 1.43). The textbook micro-price stays at about +1%: its adjustment is
-#   4.5–8.1× too small at these horizons, because restricting moves to ±1 tick throws away the moves the imbalance predicts.
+# **Fair value (test, 100 ms grid, n = 1,261,848)**
+# * At **100 ms** nothing beats the mid by more than 1%. The weighted mid (−21.8%) and the extended micro-price (−1.2%) overshoot
+#   (calibration slopes 0.26 and 0.42). The textbook micro-price is +0.7% [0.7, 0.8] but undersized (slope 2.3).
+# * At **250 / 500 ms** the weighted mid is −1.7% [−2.7, −0.8] / +1.4% [0.8, 2.0], and the extended micro-price is
+#   +3.0% [2.8, 3.1] / **+3.4% [3.2, 3.5]** (slopes 1.04 / 1.85). The textbook micro-price stays below +1%: its adjustment is
+#   5.8–10.4× too small at these horizons, because restricting moves to ±1 tick throws away the moves the imbalance predicts.
 #
 # **Quoting (VM clock, zero-latency fills; mark-to-mid, no fees)**
-# * **All 18 combinations lose money**, and every PnL/h CI excludes 0 (−$2.1 to −$5.4/h at 1 HYPE per quote). Per fill, the 1 s
-#   markout is −0.25 to −1.05 bps.
+# * **All 18 combinations lose money**, and every PnL/h CI excludes 0 (−$3.7 to −$6.6/h at 1 HYPE per quote). Per fill, the 1 s
+#   markout is −0.23 to −1.04 bps.
 # * **AS(micro-price) vs AS(mid):** less adverse selection at every Δ under both fill bounds. 1 s markout, `touch`:
-#   −0.41 [−0.45, −0.38] vs −0.56 [−0.60, −0.52] (Δ 100), −0.51 [−0.55, −0.48] vs −0.67 [−0.70, −0.63] (Δ 250),
-#   −0.65 [−0.69, −0.61] vs −0.77 [−0.81, −0.72] (Δ 500). Under `through` the gaps are 0.03–0.04 bps and the (unpaired) CIs
-#   overlap, so the improvement is only clear under `touch`. It also carries less inventory (mean |q| 2.1–2.4 vs 2.6–2.7 lots, `touch`).
-# * **Shorter requote → less adverse selection:** AS(micro-price) [touch] −0.41 / −0.51 / −0.65 bps at Δ = 100 / 250 / 500 ms.
-# * **Join-the-touch is the bound-sensitive one.** Least adversely selected per fill under `touch` (−0.25 to −0.33 bps), most
-#   under `through` (−0.91 to −1.05). Anything resting on it is a queue-position bet. Mean |q| 3.2–3.4 lots.
-# * AS's fitted fill decay is k ≈ 0.37–0.43 / tick, so its quotes sit ~2.5–2.8 ticks from mid in a market that's 1 tick wide 73% of the time.
+#   −0.36 [−0.39, −0.34] vs −0.47 [−0.50, −0.45] (Δ 100), −0.49 [−0.51, −0.47] vs −0.59 [−0.62, −0.57] (Δ 250),
+#   −0.63 [−0.66, −0.60] vs −0.72 [−0.75, −0.69] (Δ 500). Under `through` the gaps are 0.03–0.04 bps and the (unpaired) CIs
+#   overlap, so the improvement is only clear under `touch`. It also carries less inventory (mean |q| 2.3–2.6 vs 2.7–2.8 lots, `touch`).
+# * **Shorter requote → less adverse selection:** AS(micro-price) [touch] −0.36 / −0.49 / −0.63 bps at Δ = 100 / 250 / 500 ms.
+# * **Join-the-touch is the bound-sensitive one.** Least adversely selected per fill under `touch` (−0.23 to −0.32 bps), most
+#   under `through` (−0.82 to −1.04). Anything resting on it is a queue-position bet. Mean |q| 3.4–4.0 lots.
+# * AS's fitted fill decay is k ≈ 0.37–0.42 / tick, so its quotes sit ~2.5–2.8 ticks from mid in a market that's 1 tick wide 70% of the time.
 #
-# **Compared with the 10-20 run:** fair value is stable; quoting markouts are 0.1–0.2 bps worse on a test period that now
-# includes Monday's US hours.
+# **Compared with the 43.6 h run:** per-fill quoting markouts are stable (≤ 0.1 bps change, same orderings); PnL/h is worse
+# because of more fills per hour. Fair value moved outside its CIs (see weak points).
 #
-# **What this baseline says to beat:** fair-value skill at 250–500 ms of about +3–4% MSE vs mid. The quoting numbers aren't a
-# usable bar until fill timing is fixed.
+# **What this baseline says to beat:** fair-value skill at 250–500 ms of about +3% MSE vs mid, give or take a point depending on
+# the test days. The quoting numbers aren't a usable bar until fill timing is fixed.
 #
 # **Open questions for Mark**
 # 1. Which fill model do you believe for HL at the touch? The new `l2_fast` table could support a queue-position estimate between the two bounds.
@@ -810,15 +821,17 @@ pd.DataFrame(TRIALS).groupby("part").size()
 # 3. Quote size, inventory limit and skew (γ). What inventory risk do you actually want to carry?
 # 4. Which fee tier should go into `MAKER_FEE_BPS`?
 # 5. Keep the extended micro-price as the fair-value baseline, or only the textbook one?
-# 6. Once more days sync, split by day (train on some days, test on others) instead of 60/40?
-
+# 6. There are now ~3.7 days. Split by day (train on some days, test on others, or leave-one-day-out) instead of 60/40? The
+#    fair-value shift between test periods suggests the single-split CIs are too narrow.
+#
 # %% [markdown]
 # ## 11. Every assumption made (all marked `# ASSUMPTION:` in KNOBS / code)
 # **Split and coverage**
 # * The train/test split is 60/40 by *covered* time.
 # * A feed hole is 30 s with no bbo update or 2 min with no trade. Segments shorter than 10 min are ignored.
 # * Inventory is flattened at mid, for free, at every data hole. Coverage is treated as known: that's bookkeeping, not a signal.
-# * The sample ends at `DATA_END_UTC` = 2026-10-20 00:30 UTC (local data ends 00:35).
+# * The sample ends at `DATA_END_UTC` = 2026-10-21 21:00 UTC. Capture ends 20:54, but the last two capture files (20:31–20:54) never
+#   synced, so the data actually ends at 20:31. Feed holes are handled as coverage gaps.
 #
 # **Clock and latency**
 # * All on the VM clock (`ts_recv`). Order-entry delay is 0 (`ORDER_DELAY_MS`). That isn't just optimistic: it makes the quoting fills
