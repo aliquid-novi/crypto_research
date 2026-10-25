@@ -77,6 +77,8 @@ research/
   audit/runs.jsonl  append-only
 config/data.yaml    column mapping for Mark's parquet
 tools/nb_dump.py    notebook -> text + PNGs for reading outputs
+work_specific/      standalone notebooks Mark copies ONE WAY to his work machine; synthetic-validated here,
+                    firm data/outputs/fees never come back (rule 9 still applies to this repo)
 .scratch/           agent scratch space (gitignored)
 ```
 
