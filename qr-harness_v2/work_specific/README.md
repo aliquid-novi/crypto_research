@@ -4,9 +4,10 @@ Standalone notebooks that Mark copies **one way** onto his work machine and runs
 
 - Nothing comes back: no firm data, outputs, paths, fee tiers or executed notebooks from the work machine.
 - Notebooks here are built and validated on synthetic data only, and use only pandas / numpy / matplotlib / pyarrow
-  (no `qrlib`), so a single file is all that needs copying.
+  (no `qrlib`). Copy the notebook **and its `_lib.py`** into the same folder.
+- Notebooks stay lean (config + one call per step + the reasoning in markdown); the code lives in `<name>_lib.py`.
 - Source of truth is the jupytext `.py`; `python -m qrlib.cli sync work_specific/<name>.py` regenerates the `.ipynb`.
 
-| notebook | what |
-|---|---|
-| `mm_feasibility` | MM feasibility gates: quote Hyperliquid perps, hedge on Binance perps |
+| notebook | lib | what |
+|---|---|---|
+| `mm_feasibility` | `mm_feasibility_lib.py` | MM feasibility gates: quote Hyperliquid perps, hedge on Binance perps |
