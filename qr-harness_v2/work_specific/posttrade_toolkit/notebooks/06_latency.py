@@ -1,0 +1,141 @@
+# %% [markdown]
+# # 06 · Latency
+#
+# **Purpose.** Where the time goes between market data arriving and the venue acknowledging our order; how
+# that varies with time of day, activity and volatility; and whether latency costs money once those controls
+# are in. Optionally, whether a restart changed anything.
+#
+# **Tables.** orders (ts_sent, ts_ack; optional hops ts_md_recv, ts_signal), fills, book_l1, market_trades.
+#
+# **What to look at first.** The latency-by-hour plot, then the latency coefficient in the markout regression.
+#
+# ⚠ Hops are only meaningful when both timestamps come from the **same clock**. A local send time paired with an
+# exchange ack time mixes clocks. Use 01's NTP offset/drift to correct, or compare only local→local hops.
+
+# %%
+import os
+import sys
+
+sys.path.insert(0, os.path.abspath(".."))
+import matplotlib.pyplot as plt
+import numpy as np
+import pandas as pd
+
+from posttrade import _util, hygiene, latency, markouts, plots, reference, store, spreads_tca
+
+plots.style()
+T, META = store.load_tables()
+fills, _ = hygiene.dedupe_fills(T["fills"])
+book, trades, orders = T["book_l1"], T["market_trades"], T["orders"]
+assert orders is not None, "UNAVAILABLE: this notebook needs the orders table"
+TZ = "UTC"  # <- time zone for "hour of day" (e.g. "America/Chicago" for CME sessions)
+RESTARTS = []  # <- optional: list of restart timestamps (int ns UTC or strings), e.g. ["2026-01-05 12:00"]
+
+# %% [markdown]
+# ## Per-hop decomposition
+
+# %%
+lat = latency.hop_latencies(orders)
+hop_cols = [c for c in lat.columns if c.endswith("_ms")]
+display(lat[hop_cols].describe(percentiles=[0.5, 0.9, 0.99]).T.round(3))
+print("orders with a negative hop (clock problem):", int((lat["negative_hops"] > 0).sum()))
+
+# %% [markdown]
+# ## Latency vs time of day, activity and volatility
+
+# %%
+hr = latency.hour_of_day(lat["ts"], TZ)
+by_hour = latency.summarise_by(lat, hr)
+plots.lines(by_hour["q50"][hop_cols], title=f"Median latency per hop by hour ({TZ})", xlabel="hour", ylabel="ms")
+plt.show()
+plots.lines(by_hour[[("q50", "sent_to_ack_ms"), ("q90", "sent_to_ack_ms"), ("q99", "sent_to_ack_ms")]].droplevel(1, axis=1),
+            title="Order ack latency quantiles by hour", xlabel="hour", ylabel="ms")
+plt.show()
+
+# %% [markdown]
+# **How to read this.** Flat lines are good. A hop that rises at particular hours points to load (your box or
+# the venue's) at busy times; compare with the activity plot below. A q99 far above q50 is jitter, and jitter
+# is what loses races, so watch the tail more than the median. A steady trend through the day suggests clock
+# drift or resource leakage (memory, queues) and is a classic reason to schedule restarts. On the synthetic
+# data latency rises linearly by design.
+
+# %%
+ref = reference.mid_ref(book)
+vol = reference.trailing_vol(ref, 300)
+ev_ts = trades["ts"].to_numpy() if trades is not None else book["ts"].to_numpy()
+lat["msg_rate"] = latency.message_rate(lat["ts"].to_numpy(), ev_ts, 60.0)
+lat["vol_bps"] = latency.vol_at(orders, vol, orders["ts_sent"].to_numpy())
+fig, axs = plt.subplots(1, 2, figsize=(11, 4))
+plots.scatter(lat["msg_rate"], lat["sent_to_ack_ms"], ax=axs[0], title="Ack latency vs market activity", xlabel="trades/s (trailing 60 s)", ylabel="ms")
+plots.scatter(lat["vol_bps"], lat["sent_to_ack_ms"], ax=axs[1], title="Ack latency vs volatility", xlabel="trailing vol (bps/√s)", ylabel="ms")
+plt.show()
+
+# %% [markdown]
+# **How to read this.** A rising binned mean means you are slowest exactly when speed matters most (busy,
+# volatile markets), which is also when adverse selection is worst. That co-movement is why the regression
+# below must control for activity and volatility before blaming latency.
+
+# %% [markdown]
+# ## Does latency cost money? Markout regression with controls
+
+# %%
+maker = fills[fills["liquidity"] == "maker"]
+H = 60.0
+mo = markouts.compute_markouts(maker, ref, [H])[H].to_numpy()
+ctrl = pd.DataFrame({
+    "vol_bps": latency.vol_at(maker, vol),
+    "msg_rate": latency.message_rate(maker["ts"].to_numpy(), ev_ts, 60.0),
+})
+l_fill = latency.attach_order_latency(maker, orders, lat, "sent_to_ack_ms")
+order = np.argsort(maker["ts"].to_numpy(), kind="stable")
+tab = latency.latency_regression(mo[order], l_fill[order], ctrl.iloc[order], nw_lags=10)
+tab.round(4)
+
+# %% [markdown]
+# **How to read this.** The `latency_ms` coefficient is the change in 60 s markout (bps) per extra ms of order
+# latency, holding volatility and activity fixed. A negative and significant coefficient is evidence that
+# latency costs money. Multiply by your achievable latency reduction to size the prize. An insignificant
+# coefficient with large controls means the raw correlation was the market environment, not your speed. For
+# passive quotes the relevant latency is often your **cancel** latency rather than order entry. Repeat with
+# cancel timestamps if you log them.
+
+# %%
+if T["decisions"] is not None:
+    res = spreads_tca.shortfall(T["decisions"], fills, book, T["funding"], T["instruments"])
+    tr = res["trades"][res["trades"]["filled_any"]]
+    leg_f = fills[fills["leg_role"] == "entry"].sort_values("ts").groupby("decision_id").first()
+    d_lat = latency.attach_order_latency(leg_f.reset_index(), orders, lat, "sent_to_ack_ms")
+    y = (tr["delay_bps"] + tr["entry_cost_bps"]).to_numpy()
+    cs = pd.DataFrame({"legging_s": tr["legging_s"].to_numpy()})
+    d_map = pd.Series(d_lat, index=leg_f.index)
+    print(latency.latency_regression(y, tr["decision_id"].map(d_map).to_numpy(), cs, nw_lags=2).round(4))
+
+# %% [markdown]
+# Same question for spread trades: does order latency on the first leg explain delay plus entry cost? With
+# few decisions this has little power. Treat a null result as "not detectable yet".
+
+# %% [markdown]
+# ## Restart discontinuity (optional input)
+
+# %%
+restarts = [int(pd.Timestamp(r, tz="UTC").value) if isinstance(r, str) else int(r) for r in RESTARTS]
+demo = not restarts
+if demo:  # illustration on the synthetic day: a pretend restart at the median time
+    restarts = [int(np.median(lat["ts"]))]
+rd = latency.restart_discontinuity(lat["ts"].to_numpy(), lat["sent_to_ack_ms"].to_numpy(), restarts, window_s=1800)
+display(rd.assign(restart=lambda d: _util.ns_to_dt(d["restart"])).round(4))
+r0 = restarts[0]
+w = (lat["ts"] > r0 - 1800e9) & (lat["ts"] < r0 + 1800e9)
+fig, ax = plt.subplots()
+ax.scatter((lat.loc[w, "ts"] - r0) / 1e9, lat.loc[w, "sent_to_ack_ms"], s=4, color=plots.SERIES[0], alpha=0.5)
+ax.axvline(0, color=plots.SERIES[1], lw=1.5, label="restart" + (" (illustration)" if demo else ""))
+ax.set(title="Ack latency around a restart", xlabel="seconds from restart", ylabel="ms")
+ax.legend()
+plt.show()
+
+# %% [markdown]
+# **How to read this.** A drop in level at the restart line (negative `diff` / `local_linear_jump`) means the
+# restart fixed something that degrades over time, which supports scheduled restarts. No jump means
+# degradation is external. Use a window short enough that the time-of-day pattern doesn't contaminate the
+# comparison. With `RESTARTS` empty, the notebook uses a pretend restart for illustration, and a smooth trend
+# shows no jump.

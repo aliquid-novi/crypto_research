@@ -11,3 +11,4 @@ Standalone notebooks that Mark copies **one way** onto his work machine and runs
 | notebook | lib | what |
 |---|---|---|
 | `mm_feasibility` | `mm_feasibility_lib.py` | MM feasibility gates: quote Hyperliquid perps, hedge on Binance perps |
+| `posttrade_toolkit/` (copy the whole folder) | `posttrade/` package | Exchange-agnostic post-trade analytics: markouts, adverse selection, spread shortfall, models, latency, research stats. Also needs scipy + statsmodels; own runner `python run.py test / demo / notebooks` |

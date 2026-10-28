@@ -1,0 +1,10 @@
+# your data and anything derived from it never leaves the machine
+data_cache/
+data_cache_demo/
+notebooks/executed/
+*.pkl
+*.parquet
+*.csv
+__pycache__/
+.pytest_cache/
+.ipynb_checkpoints/
