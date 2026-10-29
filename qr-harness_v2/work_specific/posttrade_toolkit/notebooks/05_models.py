@@ -236,6 +236,18 @@ else:
 # kernel.
 
 # %% [markdown]
+# **Published reference points** (details in `REFERENCES.md`).
+#
+# - Hardiman, Bercot and Bouchaud (2013) found the E-mini branching ratio stayed near 1 over 1998–2011 when fitted with
+#   a power-law kernel. Exponential fits on short windows came out well below that, because most of a
+#   long-memory kernel lies outside the window.
+# - Mark, Sila and Weber (2020) found similar near-critical behaviour in Bitcoin mid-price changes.
+# - A Binance BTCUSDT preprint reports n ≈ 0.8.
+#
+# This fit uses an exponential kernel, so read α as a **short-memory lower bound**. Compare α only across fits on
+# the same window length.
+
+# %% [markdown]
 # ## Price impact: response function, propagator, Kyle λ, Roll, Huang–Stoll, Hasbrouck VAR
 
 # %%
@@ -260,6 +272,17 @@ if trades is not None:
 # and sign autocorrelation (traders splitting orders) holds the price up. Kyle λ is price impact per unit of
 # net order flow. Roll and Huang–Stoll estimate the spread from trade prices alone. Huang–Stoll's λ is the
 # share of the spread due to information and inventory, so a larger value means more informed flow.
+
+# %% [markdown]
+# **Published reference points** (details in `REFERENCES.md`).
+#
+# - Lillo and Farmer (2004) found order signs on the LSE autocorrelate as a power law, C(τ) ~ τ^-0.6. That long
+#   memory is what makes R(ℓ) keep rising while G(ℓ) decays (Bouchaud et al. 2004).
+# - Cont, Kukanov and Stoikov (2014) explained an average 65% of 10 s mid changes in 50 US stocks with order flow
+#   imbalance, against 32% with trade imbalance. That is the case for the `ofi_30s` feature above.
+#   - Crypto L1 is bursty (on Hyperliquid, one update per block), so expect less explanatory power than on equities.
+#   - A coefficient with the wrong sign usually means book updates are signed incorrectly, not that the effect is
+#     missing.
 
 # %%
 if trades is not None:
@@ -304,3 +327,10 @@ if trades is not None and len(meta) > 20:
 # meaningful fraction of daily volume. Our clips are tiny relative to daily volume, so their impact is mostly
 # spread and noise. Expect a flat or noisy fit unless you trade size. Binned means with error bars crossing
 # zero mean we cannot measure impact at that size: say so rather than reporting δ.
+#
+# **Published reference point** (details in `REFERENCES.md`).
+#
+# - Donier and Bonart (2015) rebuilt over 1M BTC metaorders on MtGox from trader IDs, using a 1-hour inactivity
+#   rule. They found δ ≈ 0.5 over four decades of Q/V, with Y ≈ 0.9 (spread ≈ 0.35). Their normalisation is the
+#   same as here: daily σ and daily V.
+# - Impact decayed almost completely after the metaorder ended.

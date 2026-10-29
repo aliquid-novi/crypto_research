@@ -153,6 +153,17 @@ Everything happens in **`notebooks/00_plug_your_data.ipynb`**, in the cell marke
 - **Big files.** For millions of fills, use `markouts.daily_markout_means` (one day at a time), and load one
   day or instrument at a time in your `load_*` functions.
 
+## Published reference points
+
+`REFERENCES.md` gives, for each method, what papers and practitioners measured with it, with the
+numbers checked against the source. Use it as a plausibility range for your results, not as a
+target. It also flags where the published work shows a method is biased. Examples:
+
+- An exponential-kernel Hawkes fit understates the branching ratio.
+- Vendor markout charts often use the opposite sign to ours.
+
+The notebooks quote the relevant points next to each chart.
+
 ## Known weak points (read before trusting a number)
 
 - **Overlap.** Markouts of fills closer together than the horizon share price paths. CIs use a 60 s cluster

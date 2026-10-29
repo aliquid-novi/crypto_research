@@ -168,6 +168,14 @@ fits[["theta", "half_life_s", "b", "se_b", "n"]].round(5)
 # noise (bid/ask bounce, legs sampled at slightly different times) is inflating lag-1 estimates, so use the
 # plateau. If it keeps changing, the spread is not a single OU process (regimes, drifting hedge ratio). With
 # few half-lives in the sample, θ has a large sampling error (roughly √(2θ/T)).
+#
+# **Published reference points** (details in `REFERENCES.md`).
+#
+# - Makarov and Schoar (2020) found gaps between crypto exchanges that recur and can persist for weeks, so one
+#   stationary OU mean may not hold. Fit per day or per regime and see whether θ is stable.
+# - Which venue leads also moves over time. BitMEX, then Huobi and OKEx perpetuals, then Binance's USDT
+#   perpetual led bitcoin price discovery, and CME mostly reacted (Alexander et al.). So re-estimate the lead
+#   venue from your own data rather than assuming it.
 
 # %%
 kf = dynamics.kalman_hedge_ratio(np.log(g["mid_A"].to_numpy()), np.log(g["mid_B"].to_numpy()), q=(1e-7, 1e-7), r=1e-6, init_var=1e-4,

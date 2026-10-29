@@ -91,6 +91,13 @@ pd.concat({k: v["mean"] for k, v in curves.items()}, axis=1).round(2)
 # 06 latency. Negative horizons show what the price did before the fill (see pre-fill drift in 03).
 
 # %% [markdown]
+# **Published reference points** (details in `REFERENCES.md`). Vendor markout charts, for example Tread's,
+# often use the **opposite sign**: positive means price drifted away from you, which is bad. Flip them before
+# comparing. Practitioners read a good maker fill as drift towards you *before* the fill and flat after it.
+# Stoikov (2018) found the microprice predicts short-horizon prices better than the mid or the weighted mid,
+# so its curve is the one to trust most at short horizons if it is calibrated well.
+
+# %% [markdown]
 # ## Decomposition: spread captured + adverse move
 
 # %%

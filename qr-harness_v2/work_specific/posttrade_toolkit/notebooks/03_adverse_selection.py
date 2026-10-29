@@ -122,6 +122,13 @@ else:
 # finding is actionable: score them (below), avoid them, or skew against them. A curve near the diagonal
 # means losses are spread evenly, so the problem is your quotes, not a particular counterparty. Rank by
 # **total** loss, but check `n`: an address with three big losses is probably luck.
+#
+# **Published reference point** (details in `REFERENCES.md`).
+#
+# - Barone and Lillo (2026) used Hyperliquid address data to rebuild 4.3M hidden metaorders.
+# - Hidden orders that traded alongside public same-direction TWAPs paid more permanent impact.
+# - On venues that publish addresses, "a public TWAP is active" is therefore a conditioning column worth trying
+#   in `conditional_curves` and the toxicity scores.
 
 # %% [markdown]
 # ## Venue-wide taker toxicity (needs buyer/seller in the public tape)
