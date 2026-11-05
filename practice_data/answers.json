@@ -1,0 +1,51 @@
+{
+  "seed": 7,
+  "days": [
+    "2026-10-12",
+    "2026-10-13",
+    "2026-10-14",
+    "2026-10-15",
+    "2026-10-16",
+    "2026-10-19",
+    "2026-10-20",
+    "2026-10-21"
+  ],
+  "slow_day": "2026-10-14",
+  "busy_window": [
+    "13:00:00",
+    "13:40:00"
+  ],
+  "tob_day": "2026-10-19",
+  "mki_day": "2026-10-21",
+  "mki_rows": 500,
+  "mki_first_sydney": "15:40:23.529",
+  "mki_last_sydney": "15:43:00.843",
+  "submit_files": 19,
+  "submit_rows_raw": 117895,
+  "submit_duplicate_rows": 4987,
+  "submit_rows_unique": 112908,
+  "s50_orders_sent": 49022,
+  "s50_orders_acked": 49033,
+  "s50_orders_paired": 49020,
+  "s50_sent_no_ack": 2,
+  "s50_ack_no_send": 13,
+  "usd_orders_sent": 5505,
+  "s50_retried_cancels": 292,
+  "s50_outcomes": {
+    "canceled": 45600,
+    "filled_before_request": 2271,
+    "filled_in_flight": 1180
+  },
+  "rejects_total": 4163,
+  "s50_rejects": 3743,
+  "s50_canceled_rows": 45607,
+  "s50_paired_by_session": {
+    "midday": 23143,
+    "close": 18742,
+    "open": 7135
+  },
+  "rejects_by_message": {
+    "FIX Order GW (Samsung KRX (SKRX)): Not enough working quantity.": 3842,
+    "TT gateway rejection: Previous Pending action not yet acknowledged.": 321
+  }
+}
