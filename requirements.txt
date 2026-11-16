@@ -1,0 +1,5 @@
+# Python 3.10+ (tested with mediapipe 0.10.32)
+mediapipe>=0.10.14      # hand landmarks (Tasks API; hand model auto-downloads on first run)
+opencv-python>=4.8      # webcam capture + HUD window
+numpy>=1.24
+pynput>=1.7.6           # moves the OS cursor, clicks, scrolls, presses Esc

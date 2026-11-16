@@ -1,0 +1,1933 @@
+<!doctype html><html><head><meta charset=utf8><meta name=viewport content="width=device-width,initial-scale=1,viewport-fit=cover"><title>Blank Brain</title><style>:root{color-scheme:light;box-sizing:border-box;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}html{scroll-padding-top:env(safe-area-inset-top,0px)}body{margin:0;padding:0;font:14px -apple-system,BlinkMacSystemFont,sans-serif;background:#fff;color:#000}img{max-width:100%}[hidden]:not([hidden=until-found i]){display:none!important}</style></head><body>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@400;500;600&family=Source+Serif+4:opsz,wght@8..60,400;8..60,600&display=swap">
+<style>
+/* Layout: brains homepage (card grid) → per-brain workbench: tool sidebar left, graph canvas centre, note reader right (bottom sheet on phones). */
+:root{
+  --bg:#ECEEE9; --panel:#F8F9F6; --panel-2:#E4E7E1; --ink:#1C2126; --muted:#646C73; --line:#D2D7CF;
+  --edge:#B2BAB2; --accent:#2F43B8; --accent-soft:#DCE0F5; --danger:#B3261E; --node:#868E96;
+  --g-ink:#2F43B8; --g-teal:#0F7C7A; --g-moss:#4F7A28; --g-ochre:#A87410; --g-rust:#B4472A; --g-plum:#7B3FA0; --g-rose:#B23A6B; --g-slate:#56636F;
+  --f-ui:"IBM Plex Sans",system-ui,-apple-system,"Segoe UI",sans-serif;
+  --f-mono:"IBM Plex Mono",ui-monospace,"SFMono-Regular",Menlo,monospace;
+  --f-read:"Source Serif 4",Georgia,"Times New Roman",serif;
+}
+@media (prefers-color-scheme: dark){:root:not([data-theme="light"]){
+  --bg:#101317; --panel:#171B20; --panel-2:#20252B; --ink:#E2E5E0; --muted:#8E979F; --line:#2A3037;
+  --edge:#3B434C; --accent:#95A3FF; --accent-soft:#252C4C; --danger:#FF8A80; --node:#7A838C;
+  --g-ink:#8F9EFF; --g-teal:#4FC7C2; --g-moss:#93C76A; --g-ochre:#E3B34F; --g-rust:#F08A68; --g-plum:#C394E6; --g-rose:#F07BA8; --g-slate:#9AA8B5;
+  color-scheme:dark}}
+:root[data-theme="dark"]{
+  --bg:#101317; --panel:#171B20; --panel-2:#20252B; --ink:#E2E5E0; --muted:#8E979F; --line:#2A3037;
+  --edge:#3B434C; --accent:#95A3FF; --accent-soft:#252C4C; --danger:#FF8A80; --node:#7A838C;
+  --g-ink:#8F9EFF; --g-teal:#4FC7C2; --g-moss:#93C76A; --g-ochre:#E3B34F; --g-rust:#F08A68; --g-plum:#C394E6; --g-rose:#F07BA8; --g-slate:#9AA8B5;
+  color-scheme:dark}
+
+html,body{height:100%}
+body{background:var(--bg);color:var(--ink);font-family:var(--f-ui);font-size:14px;overflow:hidden}
+button,input,select,textarea{font:inherit;color:inherit}
+:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+.eyebrow{font-family:var(--f-mono);font-size:11px;letter-spacing:.08em;text-transform:uppercase;color:var(--muted)}
+.muted{color:var(--muted)} .small{font-size:12px}
+.row{display:flex;gap:8px;align-items:center}
+.field{width:100%;background:var(--bg);border:1px solid var(--line);border-radius:6px;padding:7px 9px}
+.field:focus{border-color:var(--accent);outline:none}
+select.field{padding:5px 6px;font-size:12px}
+.btn{background:var(--panel-2);border:1px solid var(--line);border-radius:6px;padding:6px 11px;cursor:pointer;font-weight:500;white-space:nowrap}
+.btn:hover{border-color:var(--muted)}
+.btn.primary{background:var(--accent);border-color:var(--accent);color:var(--panel)}
+.btn.primary:hover{filter:brightness(1.08)}
+.btn.ghost{background:none;border-color:transparent;color:var(--muted)}
+.btn.ghost:hover{color:var(--ink);background:var(--panel-2)}
+.btn.danger{color:var(--danger)}
+.btn.sm{padding:3px 8px;font-size:12px}
+.btn:disabled{opacity:.45;cursor:default}
+.icon-btn{width:30px;height:30px;display:inline-grid;place-items:center;border-radius:6px;border:1px solid transparent;background:none;color:var(--muted);cursor:pointer;padding:0;flex:none}
+.icon-btn:hover{background:var(--panel-2);color:var(--ink)}
+.icon-btn:disabled{opacity:.4;cursor:default}
+.icon-btn svg{width:16px;height:16px;stroke:currentColor;fill:none;stroke-width:1.6;stroke-linecap:round;stroke-linejoin:round}
+.pill{display:inline-flex;align-items:center;gap:5px;padding:1px 8px;border-radius:99px;background:var(--panel-2);font-size:11px;font-family:var(--f-mono)}
+.pill i{width:6px;height:6px;border-radius:50%;background:var(--g-moss);display:inline-block}
+.pill.warn i{background:var(--g-ochre)} .pill.bad i{background:var(--danger)}
+.dot{width:9px;height:9px;border-radius:50%;flex:none;background:var(--node);display:inline-block}
+.empty-note{font-size:13px;color:var(--muted);line-height:1.5;margin:0}
+.confirm{display:flex;gap:6px;align-items:center;font-size:12px;flex-wrap:wrap}
+.lvl{font-family:var(--f-mono);font-size:10px;letter-spacing:.06em;text-transform:uppercase;padding:1px 6px;border-radius:4px;background:var(--panel-2);color:var(--muted);white-space:nowrap}
+.lvl.r0{background:var(--accent-soft);color:var(--accent)}
+
+/* ---------- home ---------- */
+#home{position:absolute;inset:0;overflow:auto;padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px))}
+.home-inner{max-width:1040px;margin:0 auto;padding-block:40px 64px;display:flex;flex-direction:column;gap:22px}
+.home-head{display:flex;justify-content:space-between;align-items:flex-end;gap:16px;flex-wrap:wrap}
+.home-head h1{margin:4px 0 0;font-size:28px;font-weight:600;letter-spacing:-.01em;text-wrap:balance}
+.home-head p{margin:6px 0 0;color:var(--muted);max-width:60ch;line-height:1.5}
+.brain-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(250px,1fr));gap:12px}
+.brain-card{background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:16px;display:flex;flex-direction:column;gap:10px;cursor:pointer;min-width:0;text-align:left}
+.brain-card:hover{border-color:var(--muted)}
+.brain-card .name{font-size:17px;font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.brain-card .stats{font-family:var(--f-mono);font-size:12px;color:var(--muted);font-variant-numeric:tabular-nums}
+.brain-card .dots{display:flex;gap:5px;min-height:9px}
+.brain-card .foot{display:flex;justify-content:space-between;align-items:center;gap:8px;margin-top:2px}
+.brain-card .acts{display:flex;gap:2px}
+.brain-card input.rename{font-size:16px;font-weight:600}
+.new-card{border:1px dashed var(--line);background:none;border-radius:10px;display:grid;place-items:center;min-height:132px;color:var(--muted);cursor:pointer;font-weight:500}
+.new-card:hover{color:var(--ink);border-color:var(--muted)}
+.home-empty{background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:22px;display:flex;flex-direction:column;gap:10px;max-width:440px}
+.home-empty h2{margin:0;font-size:18px}
+
+/* ---------- workbench ---------- */
+#app{display:flex;height:100%;position:relative}
+#side{width:300px;flex:none;background:var(--panel);border-right:1px solid var(--line);display:flex;flex-direction:column;min-height:0;transition:margin-left .2s ease}
+#side.collapsed{margin-left:-300px}
+.side-head{padding:12px 16px 12px;display:flex;flex-direction:column;gap:6px;border-bottom:1px solid var(--line)}
+.back{align-self:flex-start;background:none;border:0;padding:2px 0;color:var(--muted);cursor:pointer;font-size:12px;font-family:var(--f-mono)}
+.back:hover{color:var(--ink)}
+#brainName{font-size:18px;font-weight:600;border:1px solid transparent;background:none;border-radius:6px;padding:2px 6px;margin-left:-7px;width:calc(100% + 7px)}
+#brainName:hover{border-color:var(--line)}
+#brainName:focus{border-color:var(--accent);outline:none;background:var(--bg)}
+.stats{font-family:var(--f-mono);font-size:12px;color:var(--muted);font-variant-numeric:tabular-nums;display:flex;gap:10px;align-items:center;flex-wrap:wrap}
+.tabs{display:flex;padding:0 12px;border-bottom:1px solid var(--line);gap:2px}
+.tabs button{background:none;border:0;padding:10px 10px 9px;font-weight:500;color:var(--muted);border-bottom:2px solid transparent;cursor:pointer}
+.tabs button[aria-selected="true"]{color:var(--ink);border-color:var(--accent)}
+.pane{flex:1;overflow:auto;padding:14px 16px 24px;display:flex;flex-direction:column;gap:14px;min-height:0}
+.section-label{display:flex;justify-content:space-between;align-items:center;gap:8px}
+.filters{display:flex;gap:4px;flex-wrap:wrap}
+.filters button{font-size:12px;padding:2px 8px;border-radius:99px;border:1px solid var(--line);background:none;color:var(--muted);cursor:pointer}
+.filters button[aria-pressed="true"]{background:var(--ink);border-color:var(--ink);color:var(--panel)}
+.sortbar{display:flex;gap:2px}
+.sortbar button{font-size:12px;padding:3px 7px}
+.sortbar button[aria-pressed="true"]{color:var(--ink);background:var(--panel-2)}
+.list{display:flex;flex-direction:column;gap:1px;margin:0 -8px}
+.item{display:flex;align-items:center;gap:9px;padding:6px 8px;border-radius:6px;cursor:pointer;border:0;background:none;text-align:left;width:100%}
+.item:hover{background:var(--panel-2)}
+.item.on{background:var(--accent-soft)}
+.item .t{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.item .n{font-family:var(--f-mono);font-size:11px;color:var(--muted);font-variant-numeric:tabular-nums;min-width:12px;text-align:right}
+.item input[type=checkbox]{accent-color:var(--accent);width:15px;height:15px;margin:0;pointer-events:none}
+.bulkbar{position:sticky;bottom:-24px;margin:0 -16px -24px;padding:10px 16px 14px;background:var(--panel);border-top:1px solid var(--line);display:flex;flex-direction:column;gap:8px}
+.bulkbar .row select{flex:1;min-width:0}
+
+.group-row{display:flex;align-items:center;gap:6px;padding:3px 0}
+.group-row input.name{flex:1;min-width:0;background:none;border:1px solid transparent;border-radius:5px;padding:4px 6px}
+.group-row input.name:hover{border-color:var(--line)}
+.group-row input.name:focus{border-color:var(--accent);outline:none;background:var(--bg)}
+.group-row .n{font-family:var(--f-mono);font-size:12px;color:var(--muted);min-width:14px;text-align:right}
+.rank{font-family:var(--f-mono);font-size:11px;color:var(--muted);width:18px;height:18px;border-radius:4px;border:1px solid var(--line);display:grid;place-items:center;flex:none}
+.swatch-btn{width:18px;height:18px;border-radius:50%;border:2px solid var(--panel);box-shadow:0 0 0 1px var(--line);cursor:pointer;padding:0;flex:none}
+.swatches{display:flex;gap:6px;flex-wrap:wrap;padding:4px 0 2px 24px}
+.swatches button{width:20px;height:20px;border-radius:50%;border:2px solid var(--panel);box-shadow:0 0 0 1px var(--line);cursor:pointer;padding:0}
+.swatches button[aria-pressed="true"]{box-shadow:0 0 0 2px var(--ink)}
+.new-group{display:flex;flex-direction:column;gap:8px;padding:10px;border:1px dashed var(--line);border-radius:8px}
+.new-group .swatches{padding-left:0}
+.ctl{display:flex;flex-direction:column;gap:4px}
+.ctl label{display:flex;justify-content:space-between;font-size:13px}
+.ctl output{font-family:var(--f-mono);font-size:12px;color:var(--muted);font-variant-numeric:tabular-nums}
+.ctl input[type=range]{width:100%;accent-color:var(--accent)}
+.toggle{display:flex;align-items:center;justify-content:space-between;gap:10px;font-size:13px;cursor:pointer}
+.toggle input{accent-color:var(--accent);width:16px;height:16px;flex:none}
+hr.sep{border:0;border-top:1px solid var(--line);margin:2px 0}
+textarea.io{font-family:var(--f-mono);font-size:11px;min-height:100px;resize:vertical}
+
+#stage{flex:1;position:relative;min-width:0;overflow:hidden}
+#cv{position:absolute;inset:0;width:100%;height:100%;display:block;touch-action:none;cursor:grab}
+#cv.panning{cursor:grabbing} #cv.over{cursor:pointer}
+.toolbar{position:absolute;top:12px;left:12px;display:flex;gap:4px;background:var(--panel);border:1px solid var(--line);border-radius:8px;padding:3px;z-index:3}
+.search-float{position:absolute;top:12px;right:12px;z-index:3;width:min(260px,calc(100% - 150px))}
+.search-float input{background:var(--panel)}
+.legend{position:absolute;top:56px;left:12px;z-index:2;display:flex;flex-direction:column;gap:3px;font-size:11px;color:var(--muted);font-family:var(--f-mono);pointer-events:none}
+.legend span{display:flex;align-items:center;gap:6px}
+.legend i{border-radius:50%;background:var(--muted);display:inline-block;opacity:.8}
+.hint{position:absolute;bottom:12px;left:12px;right:12px;font-size:12px;color:var(--muted);pointer-events:none}
+.hint kbd{font-family:var(--f-mono);font-size:11px;padding:0 4px;border:1px solid var(--line);border-radius:3px;background:var(--panel)}
+#emptyState{position:absolute;inset:0;display:grid;place-items:center;pointer-events:none;padding:16px}
+#emptyState .card{pointer-events:auto;max-width:360px;background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:20px;display:flex;flex-direction:column;gap:10px}
+#emptyState h2{margin:0;font-size:17px;font-weight:600}
+#emptyState p{margin:0;font-size:13px;line-height:1.55;color:var(--muted)}
+code.k{font-family:var(--f-mono);font-size:12px;background:var(--panel-2);padding:1px 4px;border-radius:3px;color:var(--ink)}
+
+/* ---------- note panel ---------- */
+#note{width:420px;flex:none;background:var(--panel);border-left:1px solid var(--line);display:flex;flex-direction:column;min-height:0}
+.note-head{padding:14px 16px 10px;display:flex;flex-direction:column;gap:8px;border-bottom:1px solid var(--line)}
+.note-top{display:flex;gap:6px;align-items:center}
+.note-top select{flex:1;min-width:0}
+#noteTitle{font-size:20px;font-weight:600;border:1px solid transparent;background:none;border-radius:6px;padding:3px 6px;margin-left:-7px;width:calc(100% + 7px)}
+#noteTitle:hover{border-color:var(--line)}
+#noteTitle:focus{border-color:var(--accent);outline:none;background:var(--bg)}
+.seg{display:inline-flex;border:1px solid var(--line);border-radius:6px;overflow:hidden}
+.seg button{border:0;background:none;padding:3px 10px;font-size:12px;cursor:pointer;color:var(--muted)}
+.seg button[aria-pressed="true"]{background:var(--panel-2);color:var(--ink)}
+.warn-line{font-size:12px;color:var(--g-ochre)}
+.note-body{flex:1;overflow:auto;padding:14px 16px 20px;display:flex;flex-direction:column;gap:20px;min-height:0}
+#editor{width:100%;min-height:220px;flex:none;resize:vertical;background:var(--bg);border:1px solid var(--line);border-radius:8px;padding:10px 12px;font-family:var(--f-mono);font-size:13px;line-height:1.6}
+#editor:focus{border-color:var(--accent);outline:none}
+.reader{font-family:var(--f-read);font-size:16px;line-height:1.6;max-width:65ch;overflow-wrap:anywhere}
+.reader > :first-child{margin-top:0}
+.reader h1,.reader h2,.reader h3{font-family:var(--f-ui);line-height:1.3;margin:1.1em 0 .4em}
+.reader h1{font-size:19px}.reader h2{font-size:17px}.reader h3{font-size:15px}
+.reader p{margin:0 0 .8em}
+.reader ul,.reader ol{margin:0 0 .8em;padding-left:1.3em}
+.reader code{font-family:var(--f-mono);font-size:.82em;background:var(--panel-2);padding:1px 4px;border-radius:3px}
+.reader pre{background:var(--panel-2);padding:10px 12px;border-radius:6px;overflow-x:auto;font-size:13px}
+.reader pre code{background:none;padding:0}
+.reader blockquote{margin:0 0 .8em;padding-left:12px;border-left:2px solid var(--line);color:var(--muted)}
+.reader a{color:var(--accent)}
+.reader .wl{color:var(--accent);text-decoration:none;border-bottom:1px solid var(--accent-soft);cursor:pointer}
+.reader .wl.ghost{color:var(--muted);border-bottom:1px dashed var(--muted)}
+.reader .placeholder{color:var(--muted);font-style:italic}
+
+/* peek strip */
+.peek{display:flex;flex-direction:column;gap:8px}
+.peek-head{display:flex;align-items:center;gap:6px}
+.peek-head .eyebrow{flex:1}
+.peek-count{font-family:var(--f-mono);font-size:11px;color:var(--muted);font-variant-numeric:tabular-nums}
+.peek-track{display:flex;gap:10px;overflow-x:auto;scroll-snap-type:x mandatory;scroll-behavior:smooth;padding-bottom:6px;overscroll-behavior-x:contain}
+.peek-track::-webkit-scrollbar{height:6px}
+.peek-track::-webkit-scrollbar-thumb{background:var(--line);border-radius:3px}
+.peek-card{flex:0 0 calc((100% - 10px) / 2);scroll-snap-align:start;background:var(--bg);border:1px solid var(--line);border-radius:8px;padding:10px 11px;display:flex;flex-direction:column;gap:6px;cursor:pointer;text-align:left;min-width:0;height:128px}
+.peek-card:hover{border-color:var(--muted)}
+.peek-card .pt{display:flex;align-items:center;gap:6px;min-width:0}
+.peek-card .pt b{font-weight:600;font-size:13px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;min-width:0}
+.peek-card .ex{font-family:var(--f-read);font-size:13.5px;line-height:1.4;color:var(--muted);white-space:pre-line;overflow:hidden;display:-webkit-box;-webkit-line-clamp:4;-webkit-box-orient:vertical;overflow-wrap:anywhere}
+.peek-card .ex.none{font-style:italic}
+.peek-empty{font-size:13px;color:var(--muted);border:1px dashed var(--line);border-radius:8px;padding:12px;line-height:1.5}
+.parent-line{font-size:12px;color:var(--muted);display:flex;gap:6px;align-items:center;flex-wrap:wrap}
+
+.links-block{display:flex;flex-direction:column;gap:8px}
+.chips{display:flex;flex-wrap:wrap;gap:6px}
+.chip{display:inline-flex;align-items:center;gap:6px;padding:3px 9px;border:1px solid var(--line);border-radius:99px;font-size:12px;background:var(--bg);cursor:pointer;max-width:100%}
+.chip span{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.chip.ghost{border-style:dashed;color:var(--muted)}
+.chip.rm{padding-right:3px}
+.chip .x{border:0;background:none;color:var(--muted);cursor:pointer;padding:0 4px;font-size:14px;line-height:1}
+.chip .x:hover{color:var(--danger)}
+.note-foot{padding:10px 16px;border-top:1px solid var(--line);display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap}
+.meta{font-family:var(--f-mono);font-size:11px;color:var(--muted)}
+
+#toast{position:fixed;left:50%;bottom:calc(44px + env(safe-area-inset-bottom,0px));transform:translateX(-50%);background:var(--ink);color:var(--panel);padding:7px 12px;border-radius:6px;font-size:13px;z-index:30;max-width:calc(100% - 32px)}
+#scrim{display:none}
+
+
+/* ---------- hand control ---------- */
+.icon-btn[aria-pressed="true"]{color:var(--accent);background:var(--accent-soft)}
+.btn[aria-pressed="true"]{color:var(--accent);border-color:var(--accent);background:var(--accent-soft)}
+#hc{position:fixed;right:16px;bottom:calc(16px + env(safe-area-inset-bottom,0px));z-index:25;width:272px;background:var(--panel);border:1px solid var(--line);border-radius:10px;box-shadow:0 8px 28px rgba(0,0,0,.14);display:flex;flex-direction:column;font-size:13px;transition:right .2s ease}
+.hc-head{display:flex;align-items:center;gap:6px;padding:9px 8px 8px 12px}
+.hc-head .eyebrow{flex:1;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+body.hc-on .hint{right:300px}
+.hc-cam{position:relative;margin:0 12px;border-radius:8px;overflow:hidden;background:var(--panel-2);aspect-ratio:4/3;border:1px solid var(--line)}
+#hc.nocam .hc-cam{aspect-ratio:auto;height:0;border-width:0;margin-top:-1px}
+.hc-cam video{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;transform:scaleX(-1)}
+.hc-cam canvas{position:absolute;inset:0;width:100%;height:100%}
+.hc-msg{position:absolute;inset:0;display:grid;place-items:center;text-align:center;padding:14px;font-size:12px;line-height:1.45;color:var(--muted);background:var(--panel-2)}
+#hc.nocam .hc-msg{position:static;background:none;padding:2px 0 6px}
+.hc-toast{position:absolute;left:8px;bottom:8px;background:var(--accent);color:var(--panel);font-weight:500;font-size:12px;padding:3px 9px;border-radius:6px;opacity:0;transition:opacity .15s}
+.hc-toast.on{opacity:1}
+#hc.nocam .hc-toast{display:none}
+.hc-sec{padding:10px 12px 0}
+.hc-modes{display:flex;flex-direction:column;gap:1px;margin:5px -6px 0}
+.hc-row{position:relative;display:flex;align-items:center;gap:9px;padding:5px 6px;border-radius:6px;color:var(--muted)}
+.hc-row .lbl{flex:1}
+.hc-row .k{font-family:var(--f-mono);font-size:11px}
+.hc-row .dot{opacity:.45}
+.hc-row.on{background:var(--accent-soft);color:var(--ink);font-weight:500}
+.hc-row.on .k{color:var(--accent)}
+.hc-row.on .dot{opacity:1}
+.hc-row .bar{position:absolute;left:24px;right:6px;bottom:2px;height:2px;border-radius:1px;background:var(--c);transform-origin:left center;transform:scaleX(0)}
+.hc-meter{padding:10px 12px 13px}
+.hc-track{position:relative;height:6px;border-radius:3px;background:var(--panel-2);margin-top:8px}
+.hc-track i{position:absolute;left:0;top:0;bottom:0;border-radius:3px;background:var(--g-teal);width:0}
+.hc-track i.down{background:var(--accent)}
+.hc-track b{position:absolute;top:-3px;bottom:-3px;width:1px;background:var(--edge)}
+#hcRing{position:fixed;left:0;top:0;z-index:40;pointer-events:none;width:22px;height:22px;border:2px solid var(--accent);border-radius:999px;box-shadow:0 0 0 3px var(--accent-soft);transition:border-radius .12s,background-color .12s,opacity .2s}
+#hcRing.rect{border-radius:9px}
+#hcRing.down{background:color-mix(in srgb,var(--accent) 28%,transparent)}
+#hcRing.zoom{border-style:double;border-width:4px}
+#hcRing.idle{opacity:.4;border-style:dashed;box-shadow:none}
+#hcRing.paused{opacity:0}
+#hcDot{position:fixed;left:-3px;top:-3px;z-index:41;pointer-events:none;width:6px;height:6px;border-radius:50%;background:var(--accent);opacity:.75;transition:opacity .15s}
+#hcDot.hide{opacity:0}
+@media (max-width:760px){#hc{width:220px}}
+@media (max-width:760px){
+  #side{position:absolute;inset:0 auto 0 0;z-index:12;width:min(310px,88vw);margin-left:0;transition:transform .2s ease}
+  #side.collapsed{margin-left:0;transform:translateX(-102%)}
+  #scrim.show{display:block;position:absolute;inset:0;background:rgba(0,0,0,.28);z-index:11}
+  #note{position:absolute;left:0;right:0;bottom:0;width:auto;height:66%;z-index:10;border-left:0;border-top:1px solid var(--line);border-radius:12px 12px 0 0;padding-bottom:env(safe-area-inset-bottom,0px)}
+  .search-float{width:calc(100% - 140px)}
+  .hint,.legend{display:none}
+  .home-inner{padding-block:24px 48px}
+}
+@media (prefers-reduced-motion:reduce){#side{transition:none}.peek-track{scroll-behavior:auto}}
+</style>
+
+<section id="home" aria-label="Your brains">
+  <div class="home-inner">
+    <div class="home-head">
+      <div>
+        <span class="eyebrow">Graph brains</span>
+        <h1>Your brains</h1>
+        <p>Each brain is its own graph of linked notes with its own groups, levels and layout. Open one to work in it.</p>
+      </div>
+      <div class="row"><span class="pill" id="homeStatus"><i></i><span>Loading</span></span><button class="btn" data-hc-toggle aria-pressed="false" title="Hand control (G)">Hand control</button><button class="btn primary" id="newBrain">New brain</button></div>
+    </div>
+    <div id="brainGrid" class="brain-grid"></div>
+  </div>
+</section>
+
+<div id="app" hidden>
+  <aside id="side" aria-label="Brain tools">
+    <div class="side-head">
+      <button class="back" id="backHome">← All brains</button>
+      <input id="brainName" aria-label="Brain name" maxlength="80">
+      <div class="stats"><span id="stats">0 notes · 0 links</span><span class="pill" id="status"><i></i><span>Loading</span></span></div>
+    </div>
+    <div class="tabs" role="tablist">
+      <button role="tab" aria-selected="true" data-tab="notes">Notes</button>
+      <button role="tab" aria-selected="false" data-tab="groups">Groups &amp; levels</button>
+      <button role="tab" aria-selected="false" data-tab="graph">Graph</button>
+    </div>
+
+    <div class="pane" id="pane-notes" role="tabpanel">
+      <button class="btn primary" id="newNote">New note</button>
+      <div class="filters" id="levelFilters" aria-label="Filter by level"></div>
+      <div class="section-label">
+        <div class="sortbar"><button class="btn ghost" data-sort="updated">Recent</button><button class="btn ghost" data-sort="title">A–Z</button><button class="btn ghost" data-sort="links">Links</button></div>
+        <button class="btn ghost sm" id="selectToggle">Select</button>
+      </div>
+      <div class="list" id="noteList"></div>
+      <div class="bulkbar" id="bulkbar" hidden>
+        <div class="row" style="justify-content:space-between"><span class="small"><b id="pickCount">0</b> selected</span><div class="row" style="gap:2px"><button class="btn ghost sm" id="pickAll">All shown</button><button class="btn ghost sm" id="pickNone">Clear</button></div></div>
+        <div class="row"><select class="field" id="bulkGroup" aria-label="Set group"></select><select class="field" id="bulkLevel" aria-label="Set level"></select></div>
+        <div class="row"><button class="btn primary" id="bulkApply" style="flex:1">Apply to selected</button><button class="btn" id="bulkDone">Done</button></div>
+      </div>
+    </div>
+
+    <div class="pane" id="pane-groups" role="tabpanel" hidden>
+      <div class="new-group">
+        <span class="eyebrow">New group</span>
+        <input class="field" id="newGroupName" placeholder="e.g. Markouts, Fair value, Ideas" maxlength="60">
+        <div class="swatches" id="newGroupSwatches"></div>
+        <button class="btn" id="addGroup">Add group</button>
+      </div>
+      <div class="section-label"><span class="eyebrow">Groups</span><span class="small muted">Eye hides from graph</span></div>
+      <div id="groupList"></div>
+      <hr class="sep">
+      <div class="section-label"><span class="eyebrow">Levels</span><span class="small muted">Top = biggest nodes</span></div>
+      <p class="empty-note small">A note's panel shows the connected notes one level below it, so a Primary previews its Secondaries and a Secondary its Tertiaries.</p>
+      <div id="levelList"></div>
+      <div class="row"><input class="field" id="newLevelName" placeholder="Add a level below the last" maxlength="40"><button class="btn" id="addLevel">Add</button></div>
+    </div>
+
+    <div class="pane" id="pane-graph" role="tabpanel" hidden>
+      <span class="eyebrow">Forces</span>
+      <div class="ctl"><label for="s-repel">Repulsion <output id="o-repel"></output></label><input type="range" id="s-repel" min="100" max="4000" step="50"></div>
+      <div class="ctl"><label for="s-linkDist">Link distance <output id="o-linkDist"></output></label><input type="range" id="s-linkDist" min="20" max="300" step="5"></div>
+      <div class="ctl"><label for="s-gravity">Centre pull <output id="o-gravity"></output></label><input type="range" id="s-gravity" min="0" max="0.1" step="0.002"></div>
+      <span class="eyebrow">Display</span>
+      <div class="ctl"><label for="s-nodeScale">Node size <output id="o-nodeScale"></output></label><input type="range" id="s-nodeScale" min="0.4" max="3" step="0.1"></div>
+      <div class="ctl"><label for="s-labelZoom">Labels appear at zoom <output id="o-labelZoom"></output></label><input type="range" id="s-labelZoom" min="0" max="2.5" step="0.05"></div>
+      <label class="toggle" for="s-showGhosts">Show unwritten links as ghost nodes <input type="checkbox" id="s-showGhosts"></label>
+      <label class="toggle" for="s-showOrphans">Show notes with no links <input type="checkbox" id="s-showOrphans"></label>
+      <label class="toggle" for="s-pinOnDrag">Pin a node where you drop it <input type="checkbox" id="s-pinOnDrag"></label>
+      <div class="row" style="flex-wrap:wrap">
+        <button class="btn" id="reheat">Re-run layout</button>
+        <button class="btn" id="unpinAll">Unpin all</button>
+        <button class="btn ghost" id="resetForces">Reset</button>
+      </div>
+      <hr class="sep">
+      <span class="eyebrow">Hand control</span>
+      <div class="ctl"><label for="hc-speed">Cursor speed <output id="o-hc-speed"></output></label><input type="range" id="hc-speed" min="0.4" max="2.5" step="0.05"></div>
+      <div class="ctl"><label for="hc-snap">Snap to nodes within <output id="o-hc-snap"></output></label><input type="range" id="hc-snap" min="0" max="80" step="2"></div>
+      <div class="ctl"><label for="hc-pinch">Pinch closes at <output id="o-hc-pinch"></output></label><input type="range" id="hc-pinch" min="16" max="45" step="1"></div>
+      <div class="ctl"><label for="hc-hand">Controlling hand</label><select class="field" id="hc-hand"><option value="Right">Right</option><option value="Left">Left</option><option value="Any">Either</option></select></div>
+      <p class="empty-note small">Saved on this device. The hand panel shows your live pinch distance, so set "Pinch closes at" a little above what it reads when your fingers touch.</p>
+      <hr class="sep">
+      <span class="eyebrow">Backup this brain</span>
+      <div class="row"><button class="btn" id="exportBtn">Copy brain as JSON</button></div>
+      <textarea class="field io" id="importBox" placeholder="Paste a brain JSON here to import it into this brain. Notes with the same id are replaced."></textarea>
+      <div class="row"><button class="btn" id="importBtn">Import</button><span class="small muted" id="importMsg"></span></div>
+    </div>
+  </aside>
+  <div id="scrim"></div>
+
+  <main id="stage">
+    <canvas id="cv" aria-label="Note graph"></canvas>
+    <div class="toolbar">
+      <button class="icon-btn" id="toggleSide" title="Toggle sidebar" aria-label="Toggle sidebar"><svg viewBox="0 0 16 16"><rect x="2" y="3" width="12" height="10" rx="1.5"/><path d="M6 3v10"/></svg></button>
+      <button class="icon-btn" id="fitBtn" title="Fit graph to screen" aria-label="Fit graph to screen"><svg viewBox="0 0 16 16"><path d="M2 6V2h4M10 2h4v4M14 10v4h-4M6 14H2v-4"/></svg></button>
+      <button class="icon-btn" id="addHere" title="New note" aria-label="New note"><svg viewBox="0 0 16 16"><path d="M8 3v10M3 8h10"/></svg></button>
+      <button class="icon-btn" data-hc-toggle aria-pressed="false" title="Hand control (G)" aria-label="Hand control"><svg viewBox="0 0 16 16"><path d="M5.5 8.5V3.6a1 1 0 0 1 2 0V7.5M7.5 7V2.8a1 1 0 0 1 2 0V7.5M9.5 7.3V4a1 1 0 0 1 2 0v5.2c0 2.6-1.7 4.6-4.3 4.6-1.6 0-2.6-.6-3.4-1.9L2.4 9.2a1 1 0 0 1 1.6-1.2l1.5 1.8"/></svg></button>
+    </div>
+    <div class="legend" id="legend"></div>
+    <div class="search-float"><input class="field" id="search" type="search" placeholder="Search notes  /" aria-label="Search notes"></div>
+    <div id="emptyState" hidden>
+      <div class="card">
+        <span class="eyebrow">Empty brain</span>
+        <h2>Nothing here yet</h2>
+        <p>Add a note, set its level to Primary, then link Secondary notes to it by writing <code class="k">[[Note title]]</code> or using the Link box.</p>
+        <p>Double-click empty canvas to drop a note right there.</p>
+        <div class="row"><button class="btn primary" id="emptyAdd">Add first note</button></div>
+      </div>
+    </div>
+    <div class="hint"><kbd>/</kbd> search · <kbd>N</kbd> new note · <kbd>E</kbd> edit · double-click canvas to add · scroll to zoom · <kbd>Esc</kbd> close · <kbd>G</kbd> hand control</div>
+  </main>
+
+  <section id="note" aria-label="Note" hidden>
+    <div class="note-head">
+      <div class="note-top">
+        <span class="dot" id="noteDot"></span>
+        <select class="field" id="noteGroup" aria-label="Group"></select>
+        <select class="field" id="noteLevel" aria-label="Level"></select>
+        <button class="icon-btn" id="closeNote" aria-label="Close note" title="Close (Esc)"><svg viewBox="0 0 16 16"><path d="M4 4l8 8M12 4l-8 8"/></svg></button>
+      </div>
+      <input id="noteTitle" aria-label="Note title" maxlength="140">
+      <div class="warn-line" id="titleWarn" hidden>Another note already uses this title, so [[links]] go to the older one.</div>
+      <div class="row" style="justify-content:space-between">
+        <div class="seg" role="group" aria-label="Mode"><button id="modeRead" aria-pressed="true">Read</button><button id="modeEdit" aria-pressed="false">Edit</button></div>
+        <div class="parent-line" id="parentLine"></div>
+      </div>
+    </div>
+    <div class="note-body">
+      <div id="readerWrap"><div class="reader" id="reader"></div></div>
+      <textarea id="editor" hidden spellcheck="true" placeholder="Write in markdown. Link with [[Another note]]. **bold**, *italic*, `code`, # headings, - lists."></textarea>
+      <div class="peek" id="peek" hidden>
+        <div class="peek-head">
+          <span class="eyebrow" id="peekLabel"></span>
+          <span class="peek-count" id="peekCount"></span>
+          <button class="icon-btn" id="peekPrev" aria-label="Scroll left"><svg viewBox="0 0 16 16"><path d="M10 3L5 8l5 5"/></svg></button>
+          <button class="icon-btn" id="peekNext" aria-label="Scroll right"><svg viewBox="0 0 16 16"><path d="M6 3l5 5-5 5"/></svg></button>
+        </div>
+        <div class="peek-track" id="peekTrack"></div>
+        <button class="btn ghost sm" id="peekAdd" style="align-self:flex-start"></button>
+      </div>
+      <div class="links-block">
+        <span class="eyebrow">Links out</span>
+        <div class="chips" id="outLinks"></div>
+        <div class="row">
+          <input class="field" id="linkInput" list="titleOptions" placeholder="Link to a note…" aria-label="Link to a note">
+          <button class="btn" id="linkAdd">Link</button>
+        </div>
+        <datalist id="titleOptions"></datalist>
+      </div>
+      <div class="links-block">
+        <span class="eyebrow">Linked from</span>
+        <div class="chips" id="backLinks"></div>
+      </div>
+    </div>
+    <div class="note-foot">
+      <span class="meta" id="noteMeta"></span>
+      <div class="row">
+        <button class="btn ghost" id="pinBtn">Pin</button>
+        <span id="delWrap" class="row"></span>
+      </div>
+    </div>
+  </section>
+</div>
+<aside id="hc" hidden aria-label="Hand control">
+  <div class="hc-head">
+    <span class="eyebrow">Hand control</span>
+    <span class="pill warn" id="hcPill"><i></i><span>Starting</span></span>
+    <button class="icon-btn" id="hcCamBtn" title="Show or hide camera" aria-label="Show or hide camera"><svg viewBox="0 0 16 16"><rect x="1.5" y="4.5" width="9.5" height="7" rx="1.5"/><path d="M11 7.2l3.5-2v5.6L11 8.8"/></svg></button>
+    <button class="icon-btn" id="hcOff" title="Turn off hand control (G)" aria-label="Turn off hand control"><svg viewBox="0 0 16 16"><path d="M4 4l8 8M12 4l-8 8"/></svg></button>
+  </div>
+  <div class="hc-cam"><video id="hcVideo" playsinline muted></video><canvas id="hcOverlay"></canvas><div class="hc-msg" id="hcMsg" hidden></div><span class="hc-toast" id="hcToast"></span></div>
+  <div class="hc-sec">
+    <div class="section-label"><span class="eyebrow">Mode</span><span class="meta" id="hcHand">no hand</span></div>
+    <div class="hc-modes" id="hcModes"></div>
+  </div>
+  <div class="hc-meter">
+    <div class="section-label"><span class="eyebrow">Pinch</span><span class="meta" id="hcPinch">--</span></div>
+    <div class="hc-track"><i id="hcFill"></i><b id="hcOnT"></b><b id="hcOffT"></b></div>
+  </div>
+</aside>
+<div id="hcRing" hidden></div><div id="hcDot" class="hide" hidden></div>
+<div id="toast" hidden></div>
+
+<script>
+(() => {
+"use strict";
+const $ = (s, el = document) => el.querySelector(s);
+const esc = s => String(s ?? "").replace(/[&<>"']/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
+const lc = s => String(s || "").trim().toLowerCase();
+const uid = p => p + "-" + Date.now().toString(36) + Math.random().toString(36).slice(2, 7);
+const reduceMotion = matchMedia("(prefers-reduced-motion: reduce)").matches;
+const narrow = () => matchMedia("(max-width:760px)").matches;
+const ls = { get(k, d) { try { const v = localStorage.getItem(k); return v == null ? d : JSON.parse(v); } catch (e) { return d; } }, set(k, v) { try { localStorage.setItem(k, JSON.stringify(v)); } catch (e) {} } };
+
+const DEFAULT_LEVELS = () => [{ id: "L1", name: "Primary" }, { id: "L2", name: "Secondary" }, { id: "L3", name: "Tertiary" }];
+const DEFAULTS = { repel: 900, linkDist: 90, gravity: 0.02, nodeScale: 1, labelZoom: 0.7, showGhosts: true, showOrphans: true, pinOnDrag: false };
+const SWATCHES = ["ink","teal","moss","ochre","rust","plum","rose","slate"];
+
+const S = {
+  view: "home", brains: new Map(), brainsLoaded: false, brainId: null, meta: null,
+  notes: new Map(), groups: new Map(), settings: { ...DEFAULTS, levels: DEFAULT_LEVELS() }, notesLoaded: false,
+  hiddenGroups: new Set(), selected: null, hover: null, search: "", sort: ls.get("bb-sort", "updated"),
+  levelFilter: "all", selectMode: false, picked: new Set(),
+  editing: false, readOnly: false, local: false, pendingBody: new Set(), adj: new Map()
+};
+const levels = () => (Array.isArray(S.settings.levels) ? S.settings.levels : []);
+const rankOf = id => levels().findIndex(l => l.id === id);
+const levelName = id => { const l = levels().find(x => x.id === id); return l ? l.name : ""; };
+
+/* ================= local fallback store (same shape as db) ================= */
+function makeLocalDb() {
+  let D = ls.get("bb2-local", {}); const subs = new Set();
+  const save = () => ls.set("bb2-local", D);
+  const meta = { fromCache: false, hasPendingWrites: false };
+  const snap = p => ({ id: p.split("/").pop(), exists: p in D, data: () => D[p], metadata: meta });
+  const depth = p => p.split("/").length;
+  const docs = c => Object.keys(D).filter(p => p.startsWith(c + "/") && depth(p) === depth(c) + 1).map(snap);
+  const notify = () => subs.forEach(f => f());
+  const qs = c => { const d = docs(c); return { docs: d, size: d.length, empty: !d.length, metadata: meta }; };
+  return {
+    doc: p => ({ path: p,
+      set: async d => { D[p] = JSON.parse(JSON.stringify(d)); save(); notify(); },
+      delete: async () => { delete D[p]; save(); notify(); },
+      get: async () => snap(p),
+      onSnapshot(next) { const f = () => next(snap(p)); subs.add(f); setTimeout(f); return () => subs.delete(f); } }),
+    collection: c => ({ path: c, get: async () => qs(c),
+      onSnapshot(next) { const f = () => next(qs(c)); subs.add(f); setTimeout(f); return () => subs.delete(f); } })
+  };
+}
+
+/* ================= on-disk store via blank_brain.py (same shape as db) ================= */
+async function makeServerDb() {
+  if (!/^https?:$/.test(location.protocol)) return null;
+  let D;
+  try {
+    const r = await fetch("/api/data", { cache: "no-store" });
+    if (!r.ok) return null;
+    D = await r.json(); if (!D || typeof D !== "object") return null;
+  } catch (e) { return null; }
+  const subs = new Set();
+  const meta = { fromCache: false, hasPendingWrites: false };
+  const snap = p => ({ id: p.split("/").pop(), exists: p in D, data: () => D[p], metadata: meta });
+  const depth = p => p.split("/").length;
+  const docs = c => Object.keys(D).filter(p => p.startsWith(c + "/") && depth(p) === depth(c) + 1).map(snap);
+  const notify = () => subs.forEach(f => f());
+  const qs = c => { const d = docs(c); return { docs: d, size: d.length, empty: !d.length, metadata: meta }; };
+  const put = async (p, d) => {
+    let r;
+    try { r = await fetch("/api/doc", { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ path: p, data: d }) }); }
+    catch (e) { throw Object.assign(new Error("Brain server not reachable"), { code: "unavailable" }); }
+    if (!r.ok) throw Object.assign(new Error("save failed " + r.status), { code: "unavailable" });
+  };
+  return {
+    doc: p => ({ path: p,
+      set: async d => { const c = JSON.parse(JSON.stringify(d)); D[p] = c; notify(); await put(p, c); },
+      delete: async () => { delete D[p]; notify(); await put(p, null); },
+      get: async () => snap(p),
+      onSnapshot(next) { const f = () => next(snap(p)); subs.add(f); setTimeout(f); return () => subs.delete(f); } }),
+    collection: c => ({ path: c, get: async () => qs(c),
+      onSnapshot(next) { const f = () => next(qs(c)); subs.add(f); setTimeout(f); return () => subs.delete(f); } })
+  };
+}
+
+/* ================= storage ================= */
+const Store = {
+  db: null, unsub: [], queues: {}, inflight: 0, metaTimer: null,
+  async init() {
+    let db = null;
+    try { db = window.claude && window.claude.use ? await window.claude.use("db") : null; } catch (e) { db = null; }
+    if (!db) { db = await makeServerDb(); if (db) S.disk = true; else { db = makeLocalDb(); S.local = true; } }
+    else {
+      try { const user = await window.claude.use("user"); if (user && user.can) { const c = await user.can("data.write"); if (c === false) setReadOnly(); } } catch (e) {}
+    }
+    this.db = db;
+    const t = setTimeout(() => { if (!S.brainsLoaded) setStatus("Can't reach your brains yet", "bad"); }, 10000);
+    db.collection("brains").onSnapshot(snap => {
+      const next = new Map(snap.docs.map(d => [d.id, { id: d.id, ...d.data() }]));
+      // keep optimistic local brains not yet confirmed
+      for (const [id, b] of S.brains) if (b._local && !next.has(id)) next.set(id, b);
+      S.brains = next;
+      if (!snap.metadata.fromCache) { S.brainsLoaded = true; clearTimeout(t); idleStatus(); }
+      route(); renderHome();
+    }, e => { clearTimeout(t); setStatus("Storage error", "bad"); });
+  },
+  openBrain(id) {
+    this.closeBrain();
+    const base = "brains/" + id;
+    this.unsub.push(this.db.doc(base).onSnapshot(snap => {
+      if (S.brainId !== id) return;
+      if (!snap.exists) { if (!snap.metadata.fromCache && S.brainsLoaded && !(S.brains.get(id) || {})._local) { toast("That brain was deleted."); location.hash = ""; } return; }
+      const d = snap.data();
+      if (!Store.metaTimer) S.meta = { ...d };
+      S.metaLoaded = true;
+      if (!this.metaTimer) { S.settings = mergeSettings(d.settings); syncSettingsUI(); }
+      onData();
+    }, () => {}));
+    this.unsub.push(this.db.collection(base + "/notes").onSnapshot(snap => {
+      if (S.brainId !== id) return;
+      const next = new Map();
+      for (const d of snap.docs) {
+        const prev = S.notes.get(d.id);
+        next.set(d.id, prev && S.pendingBody.has(d.id) ? prev : normNote({ id: d.id, ...d.data() }));
+      }
+      S.notes = next; S.notesLoaded = true; onData();
+    }, () => setStatus("Storage error", "bad")));
+    this.unsub.push(this.db.collection(base + "/groups").onSnapshot(snap => {
+      if (S.brainId !== id) return;
+      S.groups = new Map(snap.docs.map(d => [d.id, { id: d.id, ...d.data() }])); onData();
+    }, () => {}));
+  },
+  closeBrain() { this.unsub.forEach(u => { try { u(); } catch (e) {} }); this.unsub = []; },
+  write(path, data) {
+    if (S.readOnly) return Promise.resolve();
+    this.inflight++; setStatus("Saving", "warn");
+    const prev = this.queues[path] || Promise.resolve();
+    const p = prev.then(() => data === null ? this.db.doc(path).delete() : this.db.doc(path).set(data))
+      .catch(e => this.writeError(e))
+      .finally(() => { this.inflight--; if (!this.inflight) idleStatus(); });
+    this.queues[path] = p; return p;
+  },
+  writeError(e) {
+    const code = e && e.code;
+    if (code === "invalid_argument") { setReadOnly(); toast("You can view these brains but not change them."); }
+    else if (code === "quota_exceeded") toast("Storage is full. Delete some notes or brains, then try again.");
+    else if (code === "resource_exhausted") toast("Saving too fast. Pause a moment and edit again.");
+    else toast(S.disk ? "A change didn't save. Is blank_brain.py still running?" : "A change didn't save. Check your connection and edit again.");
+  },
+  bp(rel) { return "brains/" + S.brainId + "/" + rel; },
+  saveNote(n) { n.updated = Date.now(); S.notes.set(n.id, n); onData(); return this.write(this.bp("notes/" + n.id), noteBody(n)); },
+  deleteNote(id) { S.notes.delete(id); onData(); return this.write(this.bp("notes/" + id), null); },
+  saveGroup(g) { S.groups.set(g.id, g); onData(); return this.write(this.bp("groups/" + g.id), { name: g.name, color: g.color, order: g.order || 0 }); },
+  deleteGroup(id) { S.groups.delete(id); onData(); return this.write(this.bp("groups/" + id), null); },
+  metaBody() { const { _local, id, ...m } = S.meta; return m; },
+  saveMeta(delay = 500) {
+    if (!S.brainId || !S.meta || !S.metaLoaded) return;
+    S.meta.settings = { ...S.settings };
+    const id = S.brainId;
+    S.brains.set(id, { id, ...this.metaBody() });
+    clearTimeout(this.metaTimer);
+    this.metaTimer = setTimeout(() => { this.metaTimer = null; if (S.brainId === id) this.write("brains/" + id, this.metaBody()); }, delay);
+  },
+  flushMeta() {
+    if (!this.metaTimer || !S.brainId) return;
+    clearTimeout(this.metaTimer); this.metaTimer = null;
+    this.write("brains/" + S.brainId, this.metaBody());
+  },
+  async createBrain(name) {
+    const id = uid("b"), now = Date.now();
+    const meta = { name, created: now, updated: now, noteCount: 0, linkCount: 0, colors: [], settings: { ...DEFAULTS, levels: DEFAULT_LEVELS() } };
+    S.brains.set(id, { id, ...meta, _local: true });
+    await this.write("brains/" + id, meta);
+    return id;
+  },
+  async renameBrain(id, name) {
+    const b = S.brains.get(id); if (!b) return;
+    const { id: _, _local, ...m } = b; m.name = name; S.brains.set(id, { id, ...m }); renderHome();
+    await this.write("brains/" + id, m);
+  },
+  async deleteBrain(id) {
+    const base = "brains/" + id;
+    S.brains.delete(id); renderHome();
+    try {
+      for (const c of ["notes", "groups"]) {
+        const q = await this.db.collection(base + "/" + c).get();
+        for (const d of q.docs) await this.write(base + "/" + c + "/" + d.id, null);
+      }
+    } catch (e) {}
+    await this.write(base, null);
+  }
+};
+function mergeSettings(s) {
+  const out = { ...DEFAULTS, ...(s || {}) };
+  if (!Array.isArray(out.levels)) out.levels = DEFAULT_LEVELS();
+  return out;
+}
+function normNote(n) {
+  return { id: n.id, title: String(n.title || "Untitled"), body: String(n.body || ""), group: n.group || "", level: n.level || "",
+    links: Array.isArray(n.links) ? n.links.filter(x => typeof x === "string") : [], pinned: !!n.pinned,
+    x: typeof n.x === "number" ? n.x : null, y: typeof n.y === "number" ? n.y : null,
+    created: n.created || Date.now(), updated: n.updated || n.created || Date.now() };
+}
+function noteBody(n) { const { id, spawn, ...rest } = n; return rest; }
+function setStatus(text, kind) {
+  for (const el of [$("#status"), $("#homeStatus")]) { el.className = "pill" + (kind ? " " + kind : ""); el.lastElementChild.textContent = text; }
+}
+function idleStatus() { if (S.readOnly) setStatus("Read only", "warn"); else if (S.disk) setStatus("Saved to disk", ""); else if (S.local) setStatus("This browser only", "warn"); else setStatus("Saved", ""); }
+function setReadOnly() { if (S.readOnly) return; S.readOnly = true; idleStatus(); document.body.classList.add("ro"); applyReadOnly(); }
+function applyReadOnly() {
+  if (!S.readOnly) return;
+  document.querySelectorAll("#newBrain, #side input:not(#search), #side select, #side textarea, #addGroup, #importBtn, #newNote, #addHere, #emptyAdd, #noteTitle, #noteGroup, #noteLevel, #modeEdit, #linkInput, #linkAdd, #pinBtn, #addLevel, #selectToggle, #peekAdd, .brain-card .acts button, #delWrap button, #groupList button, #levelList button").forEach(el => el.disabled = true);
+}
+let toastT;
+function toast(msg) { const t = $("#toast"); t.textContent = msg; t.hidden = false; clearTimeout(toastT); toastT = setTimeout(() => t.hidden = true, 3200); }
+
+/* ================= routing ================= */
+function route() {
+  const h = location.hash.slice(1);
+  if (/^b-[A-Za-z0-9-]+$/.test(h)) {
+    if (S.brainId === h && S.view === "brain") return;
+    if (S.brainsLoaded && !S.brains.has(h)) { toast("That brain doesn't exist any more."); location.hash = ""; return; }
+    enterBrain(h);
+  } else if (S.view !== "home") goHome();
+}
+window.addEventListener("hashchange", route);
+function enterBrain(id) {
+  flushBody();
+  const b = S.brains.get(id) || { name: "Loading…" };
+  S.view = "brain"; S.brainId = id; S.meta = { ...b }; delete S.meta.id; S.metaLoaded = S.brains.has(id);
+  S.settings = mergeSettings(b.settings); S.notes = new Map(); S.groups = new Map(); S.notesLoaded = false;
+  S.selected = null; S.editing = false; S.search = ""; $("#search").value = ""; S.levelFilter = "all"; S.selectMode = false; S.picked.clear();
+  S.hiddenGroups = new Set(ls.get("bb-hidden-" + id, []));
+  G.nodes.clear(); G.edges = []; G.fitted = false; G.alpha = 1; firstFit = false;
+  $("#home").hidden = true; $("#app").hidden = false; $("#note").hidden = true;
+  document.querySelectorAll(".tabs button")[0].click();
+  if (narrow()) $("#side").classList.add("collapsed");
+  syncSettingsUI(); resize(); onData();
+  Store.openBrain(id);
+}
+function goHome() {
+  flushBody(); Store.flushMeta(); Store.closeBrain();
+  S.view = "home"; S.brainId = null; S.selected = null;
+  $("#app").hidden = true; $("#home").hidden = false; renderHome();
+}
+
+/* ================= home ================= */
+let renaming = null, confirmBrain = null;
+function fmtDate(t) { if (!t) return ""; const d = new Date(t); const days = (Date.now() - t) / 864e5; return days < 1 ? d.toLocaleTimeString(undefined, { hour: "2-digit", minute: "2-digit" }) : d.toLocaleDateString(undefined, { day: "numeric", month: "short", year: days > 300 ? "numeric" : undefined }); }
+function renderHome() {
+  if (S.view !== "home") return;
+  const grid = $("#brainGrid");
+  if (grid.contains(document.activeElement) && document.activeElement.classList.contains("rename")) return;
+  const arr = [...S.brains.values()].sort((a, b) => (b.updated || 0) - (a.updated || 0));
+  grid.innerHTML = "";
+  if (!arr.length) {
+    if (!S.brainsLoaded) { grid.innerHTML = `<p class="empty-note">Loading your brains…</p>`; return; }
+    grid.innerHTML = `<div class="home-empty"><span class="eyebrow">No brains yet</span><h2>Start your first brain</h2><p class="empty-note">A brain holds linked notes, their groups and levels, and its own layout. Make one per strategy, topic or project.</p><div class="row"><button class="btn primary" data-act="new">New brain</button></div></div>`;
+    grid.style.display = "block";
+  } else {
+    grid.style.display = "";
+    for (const b of arr) {
+      const card = document.createElement("div"); card.className = "brain-card"; card.tabIndex = 0; card.setAttribute("role", "link"); card.dataset.id = b.id;
+      const dots = (b.colors || []).slice(0, 8).map(c => `<span class="dot" style="background:var(--g-${esc(c)})"></span>`).join("");
+      const nameHtml = renaming === b.id ? `<input class="field rename" id="rn-${esc(b.id)}" value="${esc(b.name)}" maxlength="80" aria-label="Brain name">` : `<span class="name">${esc(b.name || "Untitled brain")}</span>`;
+      const foot = confirmBrain === b.id
+        ? `<div class="confirm" style="width:100%"><span>Delete “${esc(b.name)}” and its ${b.noteCount || 0} notes?</span><button class="btn danger sm" data-act="del-yes">Delete</button><button class="btn ghost sm" data-act="del-no">Cancel</button></div>`
+        : `<span class="meta">Edited ${esc(fmtDate(b.updated))}</span><span class="acts"><button class="btn ghost sm" data-act="rename">Rename</button><button class="btn ghost sm danger" data-act="del">Delete</button></span>`;
+      card.innerHTML = `${nameHtml}<span class="stats">${b.noteCount || 0} note${b.noteCount === 1 ? "" : "s"} · ${b.linkCount || 0} link${b.linkCount === 1 ? "" : "s"}</span><span class="dots">${dots}</span><div class="foot">${foot}</div>`;
+      grid.append(card);
+    }
+    const nc = document.createElement("button"); nc.className = "new-card"; nc.dataset.act = "new"; nc.textContent = "+ New brain"; grid.append(nc);
+    if (renaming) { const i = $("#rn-" + CSS.escape(renaming)); if (i) { i.focus(); i.select(); } }
+  }
+  applyReadOnly();
+}
+async function newBrain() {
+  if (S.readOnly) return;
+  let n = 1; const names = new Set([...S.brains.values()].map(b => lc(b.name)));
+  let name = "Untitled brain"; while (names.has(lc(name))) name = "Untitled brain " + (++n);
+  const id = await Store.createBrain(name);
+  location.hash = id;
+  setTimeout(() => { const i = $("#brainName"); i.focus(); i.select(); }, 60);
+}
+$("#newBrain").addEventListener("click", newBrain);
+$("#brainGrid").addEventListener("click", e => {
+  const act = e.target.closest("[data-act]"); const card = e.target.closest(".brain-card"); const id = card && card.dataset.id;
+  if (act) {
+    e.stopPropagation(); const a = act.dataset.act;
+    if (a === "new") return newBrain();
+    if (a === "rename") { renaming = id; confirmBrain = null; renderHome(); }
+    if (a === "del") { confirmBrain = id; renaming = null; renderHome(); }
+    if (a === "del-no") { confirmBrain = null; renderHome(); }
+    if (a === "del-yes") { confirmBrain = null; Store.deleteBrain(id).then(() => toast("Brain deleted.")); }
+    return;
+  }
+  if (e.target.closest(".rename")) return;
+  if (id) location.hash = id;
+});
+$("#brainGrid").addEventListener("keydown", e => {
+  const r = e.target.closest(".rename");
+  if (r) { if (e.key === "Enter") r.blur(); if (e.key === "Escape") { renaming = null; renderHome(); } return; }
+  const card = e.target.closest(".brain-card"); if (card && e.key === "Enter" && e.target === card) location.hash = card.dataset.id;
+});
+$("#brainGrid").addEventListener("focusout", e => {
+  const r = e.target.closest(".rename"); if (!r) return;
+  const id = renaming; renaming = null; const v = r.value.trim();
+  const b = S.brains.get(id);
+  if (b && v && v !== b.name) Store.renameBrain(id, v); else setTimeout(renderHome);
+});
+
+/* ================= link parsing ================= */
+const WL = /\[\[([^\]|#\n]+)(?:#[^\]|\n]*)?(?:\|([^\]\n]+))?\]\]/g;
+function wikilinks(body) { const out = []; let m; WL.lastIndex = 0; while ((m = WL.exec(body))) out.push(m[1].trim()); return out; }
+let titleIndex = new Map();
+function buildIndex() {
+  titleIndex = new Map();
+  for (const n of [...S.notes.values()].sort((a, b) => a.created - b.created)) { const k = lc(n.title); if (k && !titleIndex.has(k)) titleIndex.set(k, n.id); }
+}
+const resolve = t => titleIndex.get(lc(t));
+
+/* ================= graph model ================= */
+const G = { nodes: new Map(), edges: [], deg: new Map(), alpha: 1, t: { x: 0, y: 0, k: 1 }, w: 0, h: 0, dpr: 1, drag: null, fitted: false, dirty: true };
+function rebuild() {
+  buildIndex();
+  const s = S.settings;
+  // full adjacency among real notes (ignores hidden groups) for the peek strip
+  const adj = new Map(); for (const id of S.notes.keys()) adj.set(id, new Set());
+  const link = (a, b) => { if (a === b || !adj.has(a) || !adj.has(b)) return; adj.get(a).add(b); adj.get(b).add(a); };
+  for (const n of S.notes.values()) { for (const t of wikilinks(n.body)) { const id = resolve(t); if (id) link(n.id, id); } for (const id of n.links) link(n.id, id); }
+  S.adj = adj;
+
+  const visible = new Map();
+  for (const n of S.notes.values()) {
+    if (n.group && S.hiddenGroups.has(n.group)) continue;
+    visible.set(n.id, { id: n.id, title: n.title, ghost: false, group: n.group, rank: rankOf(n.level), note: n });
+  }
+  const keys = new Set(); const edges = [];
+  const addEdge = (a, b) => { if (a === b) return; const k = a < b ? a + "|" + b : b + "|" + a; if (keys.has(k)) return; keys.add(k); edges.push({ s: a, t: b }); };
+  for (const n of S.notes.values()) {
+    if (!visible.has(n.id)) continue;
+    for (const t of wikilinks(n.body)) {
+      const id = resolve(t);
+      if (id) { if (visible.has(id)) addEdge(n.id, id); }
+      else if (s.showGhosts) { const gid = "ghost:" + lc(t); if (!visible.has(gid)) visible.set(gid, { id: gid, title: t, ghost: true, group: "", rank: -1 }); addEdge(n.id, gid); }
+    }
+    for (const id of n.links) if (visible.has(id)) addEdge(n.id, id);
+  }
+  const deg = new Map(); for (const id of visible.keys()) deg.set(id, 0);
+  for (const e of edges) { deg.set(e.s, deg.get(e.s) + 1); deg.set(e.t, deg.get(e.t) + 1); }
+  if (!s.showOrphans) for (const [id] of visible) if (!deg.get(id) && id !== S.selected) visible.delete(id);
+  for (const id of [...G.nodes.keys()]) if (!visible.has(id)) G.nodes.delete(id);
+  let added = 0;
+  for (const [id, v] of visible) {
+    let node = G.nodes.get(id);
+    if (!node) {
+      node = { x: 0, y: 0, vx: 0, vy: 0 };
+      const nb = edges.find(e => (e.s === id && G.nodes.has(e.t)) || (e.t === id && G.nodes.has(e.s)));
+      const anchor = nb ? G.nodes.get(nb.s === id ? nb.t : nb.s) : null;
+      const a = Math.random() * Math.PI * 2, r = anchor ? 30 + Math.random() * 30 : 40 + Math.random() * 120;
+      node.x = (anchor ? anchor.x : 0) + Math.cos(a) * r; node.y = (anchor ? anchor.y : 0) + Math.sin(a) * r;
+      if (v.note && v.note.spawn) { node.x = v.note.spawn.x; node.y = v.note.spawn.y; }
+      G.nodes.set(id, node); added++;
+    }
+    if (v.note) delete v.note.spawn;
+    Object.assign(node, v);
+    node.pinned = !!(v.note && v.note.pinned && v.note.x != null);
+    if (node.pinned && !(G.drag && G.drag.id === id)) { node.x = v.note.x; node.y = v.note.y; }
+  }
+  G.edges = edges.filter(e => G.nodes.has(e.s) && G.nodes.has(e.t)); G.deg = deg;
+  if (added) G.alpha = Math.max(G.alpha, 0.6);
+  G.dirty = true;
+}
+const LEVEL_R = [13, 8.5, 5.8, 4.6, 4];
+function radius(n) {
+  const d = Math.sqrt(G.deg.get(n.id) || 0);
+  const base = n.ghost ? 3.5 : n.rank >= 0 ? LEVEL_R[Math.min(n.rank, LEVEL_R.length - 1)] + d * 0.8 : 4.5 + d * 2.2;
+  return base * S.settings.nodeScale;
+}
+function tick() {
+  const s = S.settings, arr = [...G.nodes.values()], a = G.alpha, N = arr.length;
+  for (let i = 0; i < N; i++) {
+    const p = arr[i];
+    for (let j = i + 1; j < N; j++) {
+      const q = arr[j]; let dx = q.x - p.x, dy = q.y - p.y; let d2 = dx * dx + dy * dy;
+      if (d2 > 360000) continue;
+      if (d2 < 1) { dx = Math.random() - .5; dy = Math.random() - .5; d2 = 1; }
+      const d = Math.sqrt(d2), f = s.repel / d2, fx = dx / d * f, fy = dy / d * f;
+      p.vx -= fx; p.vy -= fy; q.vx += fx; q.vy += fy;
+    }
+  }
+  for (const e of G.edges) {
+    const p = G.nodes.get(e.s), q = G.nodes.get(e.t); const dx = q.x - p.x, dy = q.y - p.y; const d = Math.sqrt(dx * dx + dy * dy) || 1;
+    const f = (d - s.linkDist) * 0.05, fx = dx / d * f, fy = dy / d * f;
+    p.vx += fx; p.vy += fy; q.vx -= fx; q.vy -= fy;
+  }
+  for (const n of arr) {
+    n.vx -= n.x * s.gravity; n.vy -= n.y * s.gravity;
+    if (n.pinned || (G.drag && G.drag.id === n.id)) { n.vx = n.vy = 0; continue; }
+    n.vx *= 0.55; n.vy *= 0.55;
+    const v = Math.hypot(n.vx, n.vy); if (v > 40) { n.vx *= 40 / v; n.vy *= 40 / v; }
+    n.x += n.vx * a; n.y += n.vy * a;
+  }
+  G.alpha *= 0.985; G.dirty = true;
+}
+
+/* ================= drawing ================= */
+const cv = $("#cv"), ctx = cv.getContext("2d");
+let C = {};
+function readColors() {
+  const cs = getComputedStyle(document.documentElement); const g = k => cs.getPropertyValue(k).trim();
+  C = { bg: g("--bg"), ink: g("--ink"), muted: g("--muted"), edge: g("--edge"), accent: g("--accent"), node: g("--node"), line: g("--line") };
+  for (const s of SWATCHES) C["g-" + s] = g("--g-" + s);
+  G.dirty = true;
+}
+function groupColor(id) { const g = S.groups.get(id); return g ? (C["g-" + g.color] || C.node) : C.node; }
+function cssGroupColor(id) { const g = S.groups.get(id); return g ? `var(--g-${g.color})` : "var(--node)"; }
+function resize() {
+  const r = cv.getBoundingClientRect(); if (!r.width) return;
+  G.dpr = Math.min(window.devicePixelRatio || 1, 2);
+  G.w = r.width; G.h = r.height; cv.width = Math.round(r.width * G.dpr); cv.height = Math.round(r.height * G.dpr);
+  if (!G.fitted) { G.t.x = G.w / 2; G.t.y = G.h / 2; }
+  G.dirty = true;
+}
+function matches(n) { return !S.search || lc(n.title).includes(S.search) || (!n.ghost && lc(n.note.body).includes(S.search)); }
+function draw() {
+  const { x: tx, y: ty, k } = G.t;
+  ctx.setTransform(G.dpr, 0, 0, G.dpr, 0, 0);
+  ctx.fillStyle = C.bg; ctx.fillRect(0, 0, G.w, G.h);
+  const step = 40 * k;
+  if (step > 14) {
+    ctx.fillStyle = C.line;
+    const ox = ((tx % step) + step) % step, oy = ((ty % step) + step) % step;
+    for (let x = ox; x < G.w; x += step) for (let y = oy; y < G.h; y += step) ctx.fillRect(x - .75, y - .75, 1.5, 1.5);
+  }
+  const focus = G.hover || S.selected;
+  const neigh = new Set();
+  if (focus) { neigh.add(focus); for (const e of G.edges) { if (e.s === focus) neigh.add(e.t); if (e.t === focus) neigh.add(e.s); } }
+  const sx = n => n.x * k + tx, sy = n => n.y * k + ty;
+  ctx.lineCap = "round";
+  for (const e of G.edges) {
+    const p = G.nodes.get(e.s), q = G.nodes.get(e.t);
+    const hot = focus && (e.s === focus || e.t === focus);
+    ctx.globalAlpha = focus && !hot ? 0.22 : (S.search && !(matches(p) && matches(q)) ? 0.2 : 1);
+    ctx.strokeStyle = hot ? C.accent : C.edge; ctx.lineWidth = hot ? 1.6 : 1;
+    ctx.beginPath(); ctx.moveTo(sx(p), sy(p)); ctx.lineTo(sx(q), sy(q)); ctx.stroke();
+  }
+  const labels = [];
+  const order = [...G.nodes.values()].sort((a, b) => (b.rank < 0 ? 99 : b.rank) - (a.rank < 0 ? 99 : a.rank));
+  for (const n of order) {
+    const x = sx(n), y = sy(n); const r = Math.max(2, radius(n) * Math.sqrt(k));
+    if (x < -60 || y < -60 || x > G.w + 60 || y > G.h + 60) continue;
+    const dim = (focus && !neigh.has(n.id)) || (S.search && !matches(n));
+    ctx.globalAlpha = dim ? 0.22 : 1;
+    if (n.ghost) {
+      ctx.setLineDash([2, 2]); ctx.strokeStyle = C.muted; ctx.lineWidth = 1.2;
+      ctx.beginPath(); ctx.arc(x, y, r, 0, Math.PI * 2); ctx.fillStyle = C.bg; ctx.fill(); ctx.stroke(); ctx.setLineDash([]);
+    } else {
+      const col = groupColor(n.group);
+      if (n.rank === 0) { ctx.strokeStyle = col; ctx.lineWidth = 1.5; ctx.globalAlpha = dim ? 0.12 : 0.45; ctx.beginPath(); ctx.arc(x, y, r + 4.5, 0, Math.PI * 2); ctx.stroke(); ctx.globalAlpha = dim ? 0.22 : 1; }
+      ctx.fillStyle = col; ctx.beginPath(); ctx.arc(x, y, r, 0, Math.PI * 2); ctx.fill();
+      if (n.id === S.selected) { ctx.strokeStyle = C.ink; ctx.lineWidth = 2; ctx.beginPath(); ctx.arc(x, y, r + (n.rank === 0 ? 8 : 3.5), 0, Math.PI * 2); ctx.stroke(); }
+      if (n.pinned) { ctx.fillStyle = C.bg; ctx.beginPath(); ctx.arc(x, y, Math.max(1.2, r * 0.3), 0, Math.PI * 2); ctx.fill(); }
+    }
+    const show = k >= S.settings.labelZoom || n.rank === 0 || n.id === focus || (focus && neigh.has(n.id)) || (S.search && matches(n));
+    if (show && !dim) labels.push([n, x, y + r + (n.rank === 0 ? 17 : 13)]);
+  }
+  ctx.textAlign = "center"; ctx.lineJoin = "round";
+  for (const [n, x, y] of labels) {
+    const t = n.title.length > 34 ? n.title.slice(0, 33) + "…" : n.title;
+    ctx.font = (n.rank === 0 ? "600 13px" : "500 12px") + ' "IBM Plex Sans", system-ui, sans-serif';
+    ctx.globalAlpha = 1; ctx.lineWidth = 3.5; ctx.strokeStyle = C.bg; ctx.strokeText(t, x, y);
+    ctx.fillStyle = n.ghost ? C.muted : C.ink; ctx.fillText(t, x, y);
+  }
+  ctx.globalAlpha = 1; G.dirty = false;
+}
+let animT = null;
+function loop() {
+  if (S.view === "brain") {
+    if (G.alpha > 0.008 || G.drag) tick();
+    if (animT) animT();
+    if (G.dirty) draw();
+  }
+  requestAnimationFrame(loop);
+}
+
+/* ================= camera ================= */
+function toWorld(px, py) { return { x: (px - G.t.x) / G.t.k, y: (py - G.t.y) / G.t.k }; }
+function zoomAt(px, py, f) {
+  const k = Math.min(6, Math.max(0.08, G.t.k * f)); const w = toWorld(px, py);
+  G.t.k = k; G.t.x = px - w.x * k; G.t.y = py - w.y * k; G.fitted = true; G.dirty = true;
+}
+function animateTo(target) {
+  if (reduceMotion) { Object.assign(G.t, target); G.dirty = true; return; }
+  const from = { ...G.t }, t0 = performance.now(), dur = 320;
+  animT = () => {
+    const p = Math.min(1, (performance.now() - t0) / dur), e = 1 - Math.pow(1 - p, 3);
+    G.t.x = from.x + (target.x - from.x) * e; G.t.y = from.y + (target.y - from.y) * e; G.t.k = from.k + (target.k - from.k) * e;
+    G.dirty = true; if (p >= 1) animT = null;
+  };
+}
+function fit(animate = true) {
+  const arr = [...G.nodes.values()]; if (!arr.length || !G.w) return;
+  let x0 = Infinity, y0 = Infinity, x1 = -Infinity, y1 = -Infinity;
+  for (const n of arr) { x0 = Math.min(x0, n.x); y0 = Math.min(y0, n.y); x1 = Math.max(x1, n.x); y1 = Math.max(y1, n.y); }
+  const pad = 80, k = Math.min(2, Math.max(0.1, Math.min((G.w - pad * 2) / Math.max(1, x1 - x0), (G.h - pad * 2) / Math.max(1, y1 - y0))));
+  const target = { k, x: G.w / 2 - (x0 + x1) / 2 * k, y: G.h / 2 - (y0 + y1) / 2 * k };
+  G.fitted = true; animate ? animateTo(target) : (Object.assign(G.t, target), G.dirty = true);
+}
+function centerOn(id) { const n = G.nodes.get(id); if (!n) return; const k = Math.max(G.t.k, 0.9); animateTo({ k, x: G.w / 2 - n.x * k, y: G.h / 2 - n.y * k }); }
+
+/* ================= pointer ================= */
+const ptrs = new Map(); let pan = null, pinch = null, lastTap = 0;
+function hit(px, py) {
+  let best = null, bd = Infinity;
+  for (const n of G.nodes.values()) {
+    const x = n.x * G.t.k + G.t.x, y = n.y * G.t.k + G.t.y, r = Math.max(2, radius(n) * Math.sqrt(G.t.k)) + 5;
+    const d = Math.hypot(px - x, py - y); if (d < r && d < bd) { bd = d; best = n; }
+  }
+  return best;
+}
+const local = e => { const r = cv.getBoundingClientRect(); return { x: e.clientX - r.left, y: e.clientY - r.top }; };
+cv.addEventListener("pointerdown", e => {
+  cv.setPointerCapture(e.pointerId); const p = local(e); ptrs.set(e.pointerId, p);
+  if (ptrs.size === 2) { const [a, b] = [...ptrs.values()]; pinch = { d: Math.hypot(a.x - b.x, a.y - b.y) }; G.drag = null; pan = null; return; }
+  const n = hit(p.x, p.y);
+  if (n) G.drag = { id: n.id, start: p, moved: false, shift: e.shiftKey };
+  else { pan = { x: p.x, y: p.y, tx: G.t.x, ty: G.t.y, moved: false }; cv.classList.add("panning"); }
+});
+cv.addEventListener("pointermove", e => {
+  const p = local(e);
+  if (ptrs.has(e.pointerId)) ptrs.set(e.pointerId, p);
+  if (pinch && ptrs.size === 2) { const [a, b] = [...ptrs.values()]; const d = Math.hypot(a.x - b.x, a.y - b.y); zoomAt((a.x + b.x) / 2, (a.y + b.y) / 2, d / pinch.d); pinch.d = d; return; }
+  if (G.drag) {
+    if (!G.drag.moved && Math.hypot(p.x - G.drag.start.x, p.y - G.drag.start.y) > 4) G.drag.moved = true;
+    if (G.drag.moved) { const n = G.nodes.get(G.drag.id); if (n) { const w = toWorld(p.x, p.y); n.x = w.x; n.y = w.y; G.alpha = Math.max(G.alpha, 0.3); G.dirty = true; } }
+    return;
+  }
+  if (pan) { if (Math.hypot(p.x - pan.x, p.y - pan.y) > 3) pan.moved = true; G.t.x = pan.tx + p.x - pan.x; G.t.y = pan.ty + p.y - pan.y; G.fitted = true; G.dirty = true; return; }
+  if (e.pointerType === "mouse") { const n = hit(p.x, p.y); const id = n ? n.id : null; if (id !== G.hover) { G.hover = id; cv.classList.toggle("over", !!id); G.dirty = true; } }
+});
+function endPointer(e) {
+  ptrs.delete(e.pointerId);
+  if (pinch) { if (ptrs.size < 2) pinch = null; return; }
+  const p = local(e);
+  if (G.drag) {
+    const d = G.drag; G.drag = null; const n = G.nodes.get(d.id);
+    if (!d.moved) { if (n) n.ghost ? createFromGhost(n.title) : openNote(n.id); }
+    else if (n && !n.ghost && (S.settings.pinOnDrag || d.shift || n.pinned) && !S.readOnly) {
+      const note = S.notes.get(n.id); if (note) Store.saveNote({ ...note, pinned: true, x: Math.round(n.x), y: Math.round(n.y) });
+    }
+  } else if (pan) {
+    if (!pan.moved && e.type === "pointerup") {
+      const now = performance.now();
+      if (now - lastTap < 320) { lastTap = 0; if (!S.readOnly) newNote(toWorld(p.x, p.y)); }
+      else { lastTap = now; if (S.selected) closeNote(); }
+    }
+    pan = null; cv.classList.remove("panning");
+  }
+}
+cv.addEventListener("pointerup", endPointer);
+cv.addEventListener("pointercancel", endPointer);
+cv.addEventListener("pointerleave", () => { if (G.hover) { G.hover = null; cv.classList.remove("over"); G.dirty = true; } });
+cv.addEventListener("wheel", e => { e.preventDefault(); const p = local(e); zoomAt(p.x, p.y, Math.exp(-e.deltaY * (e.ctrlKey ? 0.01 : 0.0015))); }, { passive: false });
+
+/* ================= notes ================= */
+function uniqueTitle(base) { if (!resolve(base)) return base; let i = 2; while (resolve(base + " " + i)) i++; return base + " " + i; }
+function newNote(at, title, extra) {
+  if (S.readOnly) return null;
+  const now = Date.now();
+  const n = normNote({ id: uid("n"), title: title || uniqueTitle("Untitled"), body: "", created: now, updated: now, ...(extra || {}) });
+  if (at) n.spawn = at;
+  Store.saveNote(n); openNote(n.id, true); return n;
+}
+function createFromGhost(title) { if (S.readOnly) { toast("This note hasn't been written yet."); return; } const g = G.nodes.get("ghost:" + lc(title)); newNote(g ? { x: g.x, y: g.y } : null, title); }
+function openNote(id, edit = false) {
+  if (!S.notes.has(id)) return;
+  flushBody();
+  S.selected = id; S.editing = edit && !S.readOnly;
+  $("#note").hidden = false;
+  if (narrow()) closeSide();
+  renderNote(true); renderList(); G.dirty = true;
+  requestAnimationFrame(() => { resize(); centerOn(id); if (S.editing) { const t = $("#noteTitle"); t.focus(); t.select(); } });
+}
+function closeNote() {
+  flushBody(); S.selected = null; S.editing = false; $("#note").hidden = true; renderList(); G.dirty = true;
+  requestAnimationFrame(resize);
+  if (!S.settings.showOrphans) onData();
+}
+function setEditing(on) { flushBody(); S.editing = on && !S.readOnly; renderNote(true); if (S.editing) $("#editor").focus(); }
+let bodyTimer = null;
+function flushBody() {
+  if (!bodyTimer) return; clearTimeout(bodyTimer); bodyTimer = null;
+  const id = S.selected; const n = id && S.notes.get(id); S.pendingBody.delete(id); if (n) Store.saveNote({ ...n });
+}
+$("#editor").addEventListener("input", () => {
+  const n = S.notes.get(S.selected); if (!n) return;
+  n.body = $("#editor").value; S.pendingBody.add(n.id);
+  rebuild(); renderLinks(n); renderPeek(n);
+  clearTimeout(bodyTimer); bodyTimer = setTimeout(() => { bodyTimer = null; S.pendingBody.delete(n.id); const cur = S.notes.get(n.id); if (cur) Store.saveNote({ ...cur }); }, 700);
+});
+$("#editor").addEventListener("blur", flushBody);
+
+function renameNote(n, newTitle) {
+  newTitle = newTitle.trim() || "Untitled";
+  const old = n.title; if (old === newTitle) return;
+  const oldKey = lc(old), ownsOld = resolve(old) === n.id;
+  Store.saveNote({ ...n, title: newTitle });
+  if (!ownsOld) return;
+  const re = new RegExp("\\[\\[" + old.replace(/[.*+?^${}()|[\]\\]/g, "\\$&") + "(?=[\\]|#])", "gi");
+  for (const o of S.notes.values()) {
+    if (o.id === n.id || !wikilinks(o.body).some(t => lc(t) === oldKey)) continue;
+    Store.saveNote({ ...o, body: o.body.replace(re, "[[" + newTitle) });
+  }
+}
+
+/* ================= markdown ================= */
+function unesc(s) { return s.replace(/&quot;/g, '"').replace(/&#39;/g, "'").replace(/&lt;/g, "<").replace(/&gt;/g, ">").replace(/&amp;/g, "&"); }
+function inline(s) {
+  let out = esc(s); const codes = [];
+  out = out.replace(/`([^`]+)`/g, (_, c) => { codes.push(c); return "\u0000" + (codes.length - 1) + "\u0000"; });
+  out = out.replace(/\[\[([^\]|#\n]+)(#[^\]|\n]*)?(?:\|([^\]\n]+))?\]\]/g, (_, t, h, alias) => {
+    const title = t.trim(); const id = resolve(unesc(title));
+    return `<a class="wl${id ? "" : " ghost"}" data-title="${title}" tabindex="0" role="link">${alias || title}</a>`;
+  });
+  out = out.replace(/\[([^\]]+)\]\((https?:\/\/[^)\s]+)\)/g, '<a href="$2" target="_blank" rel="noopener">$1</a>');
+  out = out.replace(/\*\*([^*]+)\*\*/g, "<strong>$1</strong>").replace(/(^|[^*])\*([^*\n]+)\*/g, "$1<em>$2</em>").replace(/~~([^~]+)~~/g, "<del>$1</del>");
+  return out.replace(/\u0000(\d+)\u0000/g, (_, i) => "<code>" + codes[+i] + "</code>");
+}
+function md(src) {
+  const lines = src.replace(/\r/g, "").split("\n"); let html = "", i = 0, para = [];
+  const flush = () => { if (para.length) { html += "<p>" + inline(para.join(" ")) + "</p>"; para = []; } };
+  while (i < lines.length) {
+    const l = lines[i]; let m;
+    if (/^```/.test(l)) { flush(); const buf = []; i++; while (i < lines.length && !/^```/.test(lines[i])) buf.push(lines[i++]); i++; html += "<pre><code>" + esc(buf.join("\n")) + "</code></pre>"; continue; }
+    if ((m = l.match(/^(#{1,3})\s+(.*)/))) { flush(); html += `<h${m[1].length}>${inline(m[2])}</h${m[1].length}>`; i++; continue; }
+    if (/^\s*[-*]\s+/.test(l)) { flush(); html += "<ul>"; while (i < lines.length && /^\s*[-*]\s+/.test(lines[i])) html += "<li>" + inline(lines[i++].replace(/^\s*[-*]\s+/, "").replace(/^\[( |x)\]\s*/i, (_, x) => x.trim() ? "☑ " : "☐ ")) + "</li>"; html += "</ul>"; continue; }
+    if (/^\s*\d+[.)]\s+/.test(l)) { flush(); html += "<ol>"; while (i < lines.length && /^\s*\d+[.)]\s+/.test(lines[i])) html += "<li>" + inline(lines[i++].replace(/^\s*\d+[.)]\s+/, "")) + "</li>"; html += "</ol>"; continue; }
+    if (/^>\s?/.test(l)) { flush(); const buf = []; while (i < lines.length && /^>\s?/.test(lines[i])) buf.push(lines[i++].replace(/^>\s?/, "")); html += "<blockquote>" + inline(buf.join(" ")) + "</blockquote>"; continue; }
+    if (/^---+\s*$/.test(l)) { flush(); html += "<hr>"; i++; continue; }
+    if (/^\s*$/.test(l)) { flush(); i++; continue; }
+    para.push(l); i++;
+  }
+  flush(); return html;
+}
+function excerpt(body) {
+  return body.replace(/\r/g, "").replace(/```[\s\S]*?(```|$)/g, "")
+    .replace(/\[\[([^\]|#\n]+)(?:#[^\]|\n]*)?(?:\|([^\]\n]+))?\]\]/g, (_, t, a) => a || t)
+    .replace(/\[([^\]]+)\]\([^)]+\)/g, "$1").replace(/[*_~`]/g, "")
+    .split("\n").map(l => l.replace(/^\s*(#{1,6}|[-*]|\d+[.)]|>)\s*/, "").trim()).filter(Boolean).slice(0, 4).join("\n");
+}
+
+/* ================= note panel ================= */
+function levelOptions(withKeep) {
+  return (withKeep ? `<option value="__keep">Level: keep</option>` : "") + `<option value="">No level</option>` + levels().map(l => `<option value="${esc(l.id)}">${esc(l.name)}</option>`).join("");
+}
+function groupOptions(withKeep) {
+  const groups = [...S.groups.values()].sort((a, b) => (a.order || 0) - (b.order || 0) || a.name.localeCompare(b.name));
+  return (withKeep ? `<option value="__keep">Group: keep</option>` : "") + `<option value="">No group</option>` + groups.map(g => `<option value="${esc(g.id)}">${esc(g.name)}</option>`).join("");
+}
+function renderNote(force) {
+  const n = S.notes.get(S.selected);
+  if (!n) { if (S.selected && S.notesLoaded) closeNote(); return; }
+  $("#noteDot").style.background = cssGroupColor(n.group);
+  const gs = $("#noteGroup"); if (document.activeElement !== gs) { gs.innerHTML = groupOptions(); gs.value = S.groups.has(n.group) ? n.group : ""; }
+  const lv = $("#noteLevel"); if (document.activeElement !== lv) { lv.innerHTML = levelOptions(); lv.value = rankOf(n.level) >= 0 ? n.level : ""; }
+  const ti = $("#noteTitle"); if (document.activeElement !== ti || force) ti.value = n.title;
+  $("#titleWarn").hidden = !([...S.notes.values()].some(o => o.id !== n.id && lc(o.title) === lc(n.title)) && resolve(n.title) !== n.id);
+  $("#modeRead").setAttribute("aria-pressed", String(!S.editing)); $("#modeEdit").setAttribute("aria-pressed", String(S.editing));
+  const ed = $("#editor");
+  ed.hidden = !S.editing; $("#readerWrap").hidden = S.editing;
+  if (S.editing) { if (document.activeElement !== ed || force) ed.value = n.body; }
+  else $("#reader").innerHTML = n.body.trim() ? md(n.body) : `<p class="placeholder">Empty note. Switch to Edit, or press E, to write.</p>`;
+  renderParents(n); renderPeek(n, force); renderLinks(n);
+  $("#pinBtn").textContent = n.pinned ? "Unpin" : "Pin";
+  $("#pinBtn").title = n.pinned ? "Let this node move with the layout again" : "Fix this node where it sits now";
+  const d = new Date(n.updated);
+  $("#noteMeta").textContent = "Edited " + d.toLocaleDateString(undefined, { day: "numeric", month: "short" }) + " " + d.toLocaleTimeString(undefined, { hour: "2-digit", minute: "2-digit" });
+  if (force || !$("#delWrap").children.length) resetDelete();
+  applyReadOnly();
+}
+function renderParents(n) {
+  const el = $("#parentLine"); el.innerHTML = "";
+  const r = rankOf(n.level); if (r <= 0) return;
+  const up = levels()[r - 1];
+  const parents = [...(S.adj.get(n.id) || [])].map(id => S.notes.get(id)).filter(p => p && p.level === up.id);
+  if (!parents.length) return;
+  const lab = document.createElement("span"); lab.textContent = "Under"; el.append(lab);
+  for (const p of parents.slice(0, 3)) el.append(chip(p.title, () => openNote(p.id), false, null, p.group));
+  if (parents.length > 3) { const m = document.createElement("span"); m.textContent = "+" + (parents.length - 3); el.append(m); }
+}
+let peekFor = null;
+function renderPeek(n, force) {
+  const box = $("#peek"); const r = rankOf(n.level); const lv = levels();
+  if (r < 0 || r + 1 >= lv.length) { box.hidden = true; peekFor = null; return; }
+  const child = lv[r + 1];
+  const kids = [...(S.adj.get(n.id) || [])].map(id => S.notes.get(id)).filter(k => k && k.level === child.id)
+    .sort((a, b) => a.title.localeCompare(b.title));
+  box.hidden = false;
+  $("#peekLabel").textContent = `${child.name} notes`;
+  $("#peekAdd").textContent = `+ New ${child.name} note linked here`;
+  $("#peekAdd").dataset.level = child.id;
+  const track = $("#peekTrack"); const keep = peekFor === n.id && !force ? track.scrollLeft : 0;
+  track.innerHTML = "";
+  if (!kids.length) {
+    track.innerHTML = `<div class="peek-empty">No ${esc(child.name)} notes connected yet. Link a note here and set its level to ${esc(child.name)}, or add one below.</div>`;
+  } else {
+    for (const k of kids) {
+      const c = document.createElement("button"); c.className = "peek-card"; c.dataset.id = k.id;
+      const ex = excerpt(k.body);
+      c.innerHTML = `<span class="pt"><span class="dot" style="background:${cssGroupColor(k.group)}"></span><b>${esc(k.title)}</b></span><span class="ex${ex ? "" : " none"}">${ex ? esc(ex) : "Empty note"}</span>`;
+      track.append(c);
+    }
+  }
+  peekFor = n.id; track.scrollLeft = keep;
+  updatePeekNav(kids.length);
+}
+function updatePeekNav(total) {
+  const track = $("#peekTrack"); const cards = track.querySelectorAll(".peek-card"); total = total ?? cards.length;
+  const many = total > 2;
+  $("#peekPrev").hidden = $("#peekNext").hidden = !many;
+  if (!total) { $("#peekCount").textContent = "0"; return; }
+  const w = cards[0] ? cards[0].offsetWidth + 10 : 1;
+  const first = Math.min(total - 1, Math.round(track.scrollLeft / w));
+  const last = Math.min(total, first + 2);
+  $("#peekCount").textContent = many ? `${first + 1}–${last} of ${total}` : String(total);
+  $("#peekPrev").disabled = track.scrollLeft < 4;
+  $("#peekNext").disabled = track.scrollLeft + track.clientWidth >= track.scrollWidth - 4;
+}
+$("#peekTrack").addEventListener("scroll", () => updatePeekNav(), { passive: true });
+$("#peekTrack").addEventListener("click", e => { const c = e.target.closest(".peek-card"); if (c) openNote(c.dataset.id); });
+$("#peekPrev").addEventListener("click", () => { const t = $("#peekTrack"); t.scrollBy({ left: -t.clientWidth - 10, behavior: reduceMotion ? "auto" : "smooth" }); });
+$("#peekNext").addEventListener("click", () => { const t = $("#peekTrack"); t.scrollBy({ left: t.clientWidth + 10, behavior: reduceMotion ? "auto" : "smooth" }); });
+$("#peekAdd").addEventListener("click", () => {
+  const parent = S.notes.get(S.selected); if (!parent || S.readOnly) return;
+  const lvId = $("#peekAdd").dataset.level; const g = G.nodes.get(parent.id);
+  const at = g ? { x: g.x + 40 + Math.random() * 30, y: g.y + 40 + Math.random() * 30 } : null;
+  newNote(at, uniqueTitle("Untitled"), { level: lvId, group: parent.group, links: [parent.id] });
+});
+
+function renderLinks(n) {
+  const out = $("#outLinks"); out.innerHTML = ""; const seen = new Set();
+  for (const t of wikilinks(n.body)) {
+    const k = lc(t); if (seen.has(k)) continue; seen.add(k);
+    const id = resolve(t); const target = id && S.notes.get(id);
+    out.append(chip(target ? target.title : t, id ? () => openNote(id) : () => createFromGhost(t), !id, null, target ? target.group : "", "Written in the note body", target && target.level));
+  }
+  for (const id of n.links) {
+    const t = S.notes.get(id); if (!t || seen.has(lc(t.title))) continue; seen.add(lc(t.title));
+    out.append(chip(t.title, () => openNote(id), false, S.readOnly ? null : () => Store.saveNote({ ...S.notes.get(n.id), links: S.notes.get(n.id).links.filter(x => x !== id) }), t.group, "Added with the Link box", t.level));
+  }
+  if (!out.children.length) out.innerHTML = `<span class="empty-note">No links yet. Write [[A note]] in the body or use the box below.</span>`;
+  const back = $("#backLinks"); back.innerHTML = "";
+  for (const o of S.notes.values()) {
+    if (o.id === n.id) continue;
+    if (o.links.includes(n.id) || wikilinks(o.body).some(t => resolve(t) === n.id)) back.append(chip(o.title, () => openNote(o.id), false, null, o.group, "", o.level));
+  }
+  if (!back.children.length) back.innerHTML = `<span class="empty-note">Nothing links here yet.</span>`;
+  $("#titleOptions").innerHTML = [...S.notes.values()].filter(o => o.id !== n.id).map(o => `<option value="${esc(o.title)}"></option>`).join("");
+}
+function chip(label, onOpen, ghost, onRemove, group, title, level) {
+  const c = document.createElement("span"); c.className = "chip" + (ghost ? " ghost" : "") + (onRemove ? " rm" : ""); c.tabIndex = 0; c.setAttribute("role", "button");
+  if (title) c.title = title;
+  const d = document.createElement("i"); d.className = "dot"; d.style.width = d.style.height = "7px"; d.style.background = ghost ? "transparent" : cssGroupColor(group);
+  if (ghost) d.style.border = "1px dashed var(--muted)";
+  const s = document.createElement("span"); s.textContent = label;
+  c.append(d, s);
+  const r = level ? rankOf(level) : -1;
+  if (r >= 0) { const b = document.createElement("span"); b.className = "lvl" + (r === 0 ? " r0" : ""); b.textContent = levelName(level); c.append(b); }
+  c.addEventListener("click", e => { if (e.target.closest(".x")) return; onOpen(); });
+  c.addEventListener("keydown", e => { if (e.key === "Enter") onOpen(); });
+  if (onRemove) { const x = document.createElement("button"); x.className = "x"; x.textContent = "×"; x.setAttribute("aria-label", "Remove link to " + label); x.addEventListener("click", onRemove); c.append(x); }
+  return c;
+}
+$("#reader").addEventListener("click", e => { const a = e.target.closest(".wl"); if (!a) return; const raw = a.dataset.title; const id = resolve(raw); id ? openNote(id) : createFromGhost(raw); });
+$("#reader").addEventListener("keydown", e => { if (e.key === "Enter" && e.target.closest(".wl")) e.target.click(); });
+$("#noteTitle").addEventListener("keydown", e => { if (e.key === "Enter") { e.preventDefault(); e.target.blur(); if (S.editing) $("#editor").focus(); } });
+$("#noteTitle").addEventListener("blur", e => { const n = S.notes.get(S.selected); if (n) renameNote(n, e.target.value); });
+$("#noteGroup").addEventListener("change", e => { const n = S.notes.get(S.selected); if (n) { Store.saveNote({ ...n, group: e.target.value }); e.target.blur(); } });
+$("#noteLevel").addEventListener("change", e => { const n = S.notes.get(S.selected); if (n) { Store.saveNote({ ...n, level: e.target.value }); e.target.blur(); renderNote(true); } });
+$("#modeRead").addEventListener("click", () => setEditing(false));
+$("#modeEdit").addEventListener("click", () => setEditing(true));
+$("#closeNote").addEventListener("click", closeNote);
+function addManualLink() {
+  const n = S.notes.get(S.selected); const v = $("#linkInput").value.trim(); if (!n || !v) return;
+  let id = resolve(v);
+  if (!id) { const now = Date.now(); const t = normNote({ id: uid("n"), title: v, body: "", created: now, updated: now }); Store.saveNote(t); id = t.id; toast(`Created “${v}” and linked it.`); }
+  if (id === n.id) { toast("A note can't link to itself."); return; }
+  const cur = S.notes.get(n.id); if (!cur.links.includes(id)) Store.saveNote({ ...cur, links: [...cur.links, id] });
+  $("#linkInput").value = "";
+}
+$("#linkAdd").addEventListener("click", addManualLink);
+$("#linkInput").addEventListener("keydown", e => { if (e.key === "Enter") { e.preventDefault(); addManualLink(); } });
+$("#pinBtn").addEventListener("click", () => {
+  const n = S.notes.get(S.selected); const g = G.nodes.get(S.selected); if (!n) return;
+  if (n.pinned) { Store.saveNote({ ...n, pinned: false, x: null, y: null }); G.alpha = Math.max(G.alpha, .3); }
+  else if (g) Store.saveNote({ ...n, pinned: true, x: Math.round(g.x), y: Math.round(g.y) });
+});
+function resetDelete() {
+  const f = $("#delWrap"); f.innerHTML = "";
+  const del = document.createElement("button"); del.className = "btn ghost danger"; del.textContent = "Delete"; del.disabled = S.readOnly;
+  del.addEventListener("click", () => {
+    f.innerHTML = ""; const w = document.createElement("div"); w.className = "confirm"; w.innerHTML = `<span>Delete this note?</span>`;
+    const y = document.createElement("button"); y.className = "btn danger sm"; y.textContent = "Delete";
+    const c = document.createElement("button"); c.className = "btn ghost sm"; c.textContent = "Cancel";
+    y.addEventListener("click", () => { const id = S.selected; closeNote(); Store.deleteNote(id); toast("Note deleted."); });
+    c.addEventListener("click", resetDelete);
+    w.append(y, c); f.append(w); c.focus();
+  });
+  f.append(del);
+}
+
+/* ================= sidebar: notes ================= */
+function filteredNotes() {
+  const q = S.search; const f = S.levelFilter;
+  return [...S.notes.values()].filter(n => (!q || lc(n.title).includes(q) || lc(n.body).includes(q)) &&
+    (f === "all" || (f === "none" ? rankOf(n.level) < 0 : n.level === f)));
+}
+function renderFilters() {
+  const el = $("#levelFilters"); const lv = levels();
+  const count = id => [...S.notes.values()].filter(n => id === "all" ? true : id === "none" ? rankOf(n.level) < 0 : n.level === id).length;
+  if (S.levelFilter !== "all" && S.levelFilter !== "none" && rankOf(S.levelFilter) < 0) S.levelFilter = "all";
+  el.innerHTML = [["all", "All"], ...lv.map(l => [l.id, l.name]), ["none", "No level"]]
+    .map(([id, name]) => `<button data-f="${esc(id)}" aria-pressed="${S.levelFilter === id}">${esc(name)} <span class="muted">${count(id)}</span></button>`).join("");
+}
+$("#levelFilters").addEventListener("click", e => { const b = e.target.closest("button"); if (!b) return; S.levelFilter = b.dataset.f; renderFilters(); renderList(); });
+function renderList() {
+  if (S.view !== "brain") return;
+  renderFilters();
+  const list = $("#noteList");
+  const arr = filteredNotes();
+  const degOf = id => (S.adj.get(id) || new Set()).size;
+  if (S.sort === "title") arr.sort((a, b) => a.title.localeCompare(b.title));
+  else if (S.sort === "links") arr.sort((a, b) => degOf(b.id) - degOf(a.id) || a.title.localeCompare(b.title));
+  else arr.sort((a, b) => b.updated - a.updated);
+  document.querySelectorAll(".sortbar button").forEach(b => b.setAttribute("aria-pressed", String(b.dataset.sort === S.sort)));
+  $("#selectToggle").textContent = S.selectMode ? "Cancel" : "Select";
+  if (!arr.length) { list.innerHTML = `<p class="empty-note" style="padding:0 8px">${S.notes.size ? "No notes match this search or filter." : "No notes yet. Use New note or double-click the canvas."}</p>`; }
+  else list.innerHTML = arr.map(n => {
+    const r = rankOf(n.level);
+    const box = S.selectMode ? `<input type="checkbox" tabindex="-1" ${S.picked.has(n.id) ? "checked" : ""}>` : "";
+    return `<button class="item${!S.selectMode && n.id === S.selected ? " on" : ""}${S.selectMode && S.picked.has(n.id) ? " on" : ""}" data-id="${esc(n.id)}">${box}<span class="dot" style="background:${cssGroupColor(n.group)}${S.hiddenGroups.has(n.group) ? ";opacity:.35" : ""}"></span><span class="t">${esc(n.title)}</span>${r >= 0 ? `<span class="lvl${r === 0 ? " r0" : ""}">${esc(levelName(n.level))}</span>` : ""}<span class="n">${degOf(n.id) || ""}</span></button>`;
+  }).join("");
+  renderBulk();
+}
+function renderBulk() {
+  const bar = $("#bulkbar"); bar.hidden = !S.selectMode;
+  if (!S.selectMode) return;
+  for (const id of [...S.picked]) if (!S.notes.has(id)) S.picked.delete(id);
+  $("#pickCount").textContent = S.picked.size;
+  const g = $("#bulkGroup"), l = $("#bulkLevel");
+  if (document.activeElement !== g) { const v = g.value; g.innerHTML = groupOptions(true); g.value = [...g.options].some(o => o.value === v) ? v : "__keep"; }
+  if (document.activeElement !== l) { const v = l.value; l.innerHTML = levelOptions(true); l.value = [...l.options].some(o => o.value === v) ? v : "__keep"; }
+  $("#bulkApply").disabled = S.readOnly || !S.picked.size;
+}
+$("#noteList").addEventListener("click", e => {
+  const b = e.target.closest(".item"); if (!b) return;
+  if (S.selectMode) { const id = b.dataset.id; S.picked.has(id) ? S.picked.delete(id) : S.picked.add(id); renderList(); }
+  else openNote(b.dataset.id);
+});
+$("#selectToggle").addEventListener("click", () => { S.selectMode = !S.selectMode; S.picked.clear(); renderList(); });
+$("#bulkDone").addEventListener("click", () => { S.selectMode = false; S.picked.clear(); renderList(); });
+$("#pickAll").addEventListener("click", () => { filteredNotes().forEach(n => S.picked.add(n.id)); renderList(); });
+$("#pickNone").addEventListener("click", () => { S.picked.clear(); renderList(); });
+$("#bulkApply").addEventListener("click", async () => {
+  const g = $("#bulkGroup").value, l = $("#bulkLevel").value;
+  if (g === "__keep" && l === "__keep") { toast("Pick a group or a level to apply."); return; }
+  const ids = [...S.picked]; let c = 0;
+  for (const id of ids) {
+    const n = S.notes.get(id); if (!n) continue;
+    const next = { ...n }; if (g !== "__keep") next.group = g; if (l !== "__keep") next.level = l;
+    if (next.group !== n.group || next.level !== n.level) { Store.saveNote(next); c++; }
+  }
+  const parts = []; if (g !== "__keep") parts.push(g ? `group “${S.groups.get(g).name}”` : "no group"); if (l !== "__keep") parts.push(l ? `level ${levelName(l)}` : "no level");
+  toast(c ? `Set ${parts.join(" and ")} on ${c} note${c > 1 ? "s" : ""}.` : "Those notes already had that.");
+  S.selectMode = false; S.picked.clear(); renderList();
+});
+document.querySelectorAll(".sortbar button").forEach(b => b.addEventListener("click", () => { S.sort = b.dataset.sort; ls.set("bb-sort", S.sort); renderList(); }));
+
+/* ================= sidebar: groups & levels ================= */
+let newGroupColor = "teal";
+function swatchRow(el, current, onPick) {
+  el.innerHTML = "";
+  for (const s of SWATCHES) {
+    const b = document.createElement("button"); b.style.background = `var(--g-${s})`; b.setAttribute("aria-label", s); b.title = s;
+    b.setAttribute("aria-pressed", String(s === current)); b.disabled = S.readOnly;
+    b.addEventListener("click", () => onPick(s)); el.append(b);
+  }
+}
+let openSwatch = null, confirmGroup = null, confirmLevel = null;
+function renderGroups() {
+  if (S.view !== "brain") return;
+  swatchRow($("#newGroupSwatches"), newGroupColor, s => { newGroupColor = s; renderGroups(); });
+  const wrap = $("#groupList");
+  if (!(wrap.contains(document.activeElement) && document.activeElement.classList.contains("name"))) {
+    const groups = [...S.groups.values()].sort((a, b) => (a.order || 0) - (b.order || 0) || a.name.localeCompare(b.name));
+    const counts = new Map(); for (const n of S.notes.values()) counts.set(n.group, (counts.get(n.group) || 0) + 1);
+    wrap.innerHTML = "";
+    if (!groups.length) wrap.innerHTML = `<p class="empty-note">No groups yet. Groups colour nodes so clusters stand out. Put a note in a group from the dropdown at the top of its panel, or use Select in the Notes tab to do many at once.</p>`;
+    for (const g of groups) {
+      const row = document.createElement("div"); row.className = "group-row";
+      const sw = document.createElement("button"); sw.className = "swatch-btn"; sw.style.background = `var(--g-${g.color})`; sw.title = "Change colour"; sw.setAttribute("aria-label", "Change colour of " + g.name);
+      sw.addEventListener("click", () => { openSwatch = openSwatch === g.id ? null : g.id; renderGroups(); });
+      const name = document.createElement("input"); name.className = "name"; name.value = g.name; name.setAttribute("aria-label", "Group name"); name.id = "gname-" + g.id;
+      name.addEventListener("keydown", e => { if (e.key === "Enter") name.blur(); });
+      name.addEventListener("blur", () => { const v = name.value.trim(); if (v && v !== g.name) Store.saveGroup({ ...g, name: v }); else name.value = g.name; setTimeout(renderGroups); });
+      const cnt = document.createElement("span"); cnt.className = "n"; cnt.textContent = counts.get(g.id) || 0;
+      const hidden = S.hiddenGroups.has(g.id);
+      const eye = document.createElement("button"); eye.className = "icon-btn eye"; eye.setAttribute("aria-label", (hidden ? "Show " : "Hide ") + g.name); eye.title = hidden ? "Show in graph" : "Hide from graph";
+      eye.innerHTML = hidden ? `<svg viewBox="0 0 16 16"><path d="M2 8s2.2-4 6-4 6 4 6 4-2.2 4-6 4-6-4-6-4z"/><path d="M3 13L13 3"/></svg>` : `<svg viewBox="0 0 16 16"><path d="M2 8s2.2-4 6-4 6 4 6 4-2.2 4-6 4-6-4-6-4z"/><circle cx="8" cy="8" r="1.8"/></svg>`;
+      eye.addEventListener("click", () => { hidden ? S.hiddenGroups.delete(g.id) : S.hiddenGroups.add(g.id); ls.set("bb-hidden-" + S.brainId, [...S.hiddenGroups]); onData(); });
+      const del = document.createElement("button"); del.className = "icon-btn"; del.setAttribute("aria-label", "Delete " + g.name); del.title = "Delete group";
+      del.innerHTML = `<svg viewBox="0 0 16 16"><path d="M3 4.5h10M6.5 4.5V3h3v1.5M4.5 4.5l.6 8.5h5.8l.6-8.5"/></svg>`;
+      del.addEventListener("click", () => { confirmGroup = g.id; renderGroups(); });
+      row.append(sw, name, cnt, eye, del); wrap.append(row);
+      if (openSwatch === g.id) { const r = document.createElement("div"); r.className = "swatches"; swatchRow(r, g.color, s => { openSwatch = null; Store.saveGroup({ ...g, color: s }); }); wrap.append(r); }
+      if (confirmGroup === g.id) {
+        const c = document.createElement("div"); c.className = "confirm"; c.style.padding = "2px 0 8px 24px";
+        c.innerHTML = `<span>Delete group? Its ${counts.get(g.id) || 0} notes stay, ungrouped.</span>`;
+        const y = document.createElement("button"); y.className = "btn danger sm"; y.textContent = "Delete";
+        y.addEventListener("click", () => { confirmGroup = null; for (const n of [...S.notes.values()]) if (n.group === g.id) Store.saveNote({ ...n, group: "" }); Store.deleteGroup(g.id); });
+        const no = document.createElement("button"); no.className = "btn ghost sm"; no.textContent = "Cancel"; no.addEventListener("click", () => { confirmGroup = null; renderGroups(); });
+        c.append(y, no); wrap.append(c);
+      }
+    }
+  }
+  renderLevels();
+  applyReadOnly();
+}
+function renderLevels() {
+  const wrap = $("#levelList");
+  if (wrap.contains(document.activeElement) && document.activeElement.classList.contains("name")) return;
+  const counts = new Map(); for (const n of S.notes.values()) counts.set(n.level, (counts.get(n.level) || 0) + 1);
+  wrap.innerHTML = "";
+  levels().forEach((l, i) => {
+    const row = document.createElement("div"); row.className = "group-row";
+    const rk = document.createElement("span"); rk.className = "rank"; rk.textContent = i + 1; rk.title = "Rank: " + (i + 1) + " (lower number = bigger node)";
+    const name = document.createElement("input"); name.className = "name"; name.value = l.name; name.setAttribute("aria-label", "Level name"); name.id = "lname-" + l.id;
+    name.addEventListener("keydown", e => { if (e.key === "Enter") name.blur(); });
+    name.addEventListener("blur", () => { const v = name.value.trim(); if (v && v !== l.name) { S.settings.levels = levels().map(x => x.id === l.id ? { ...x, name: v } : x); Store.saveMeta(); onData(); } else name.value = l.name; setTimeout(renderLevels); });
+    const cnt = document.createElement("span"); cnt.className = "n"; cnt.textContent = counts.get(l.id) || 0;
+    const up = document.createElement("button"); up.className = "icon-btn"; up.title = "Move up"; up.setAttribute("aria-label", "Move " + l.name + " up"); up.disabled = i === 0;
+    up.innerHTML = `<svg viewBox="0 0 16 16"><path d="M4 10l4-4 4 4"/></svg>`;
+    up.addEventListener("click", () => { const a = [...levels()]; [a[i - 1], a[i]] = [a[i], a[i - 1]]; S.settings.levels = a; Store.saveMeta(); onData(); });
+    const del = document.createElement("button"); del.className = "icon-btn"; del.title = "Delete level"; del.setAttribute("aria-label", "Delete " + l.name);
+    del.innerHTML = `<svg viewBox="0 0 16 16"><path d="M3 4.5h10M6.5 4.5V3h3v1.5M4.5 4.5l.6 8.5h5.8l.6-8.5"/></svg>`;
+    del.addEventListener("click", () => { confirmLevel = l.id; renderLevels(); });
+    row.append(rk, name, cnt, up, del); wrap.append(row);
+    if (confirmLevel === l.id) {
+      const c = document.createElement("div"); c.className = "confirm"; c.style.padding = "2px 0 8px 24px";
+      c.innerHTML = `<span>Delete level? Its ${counts.get(l.id) || 0} notes lose their level.</span>`;
+      const y = document.createElement("button"); y.className = "btn danger sm"; y.textContent = "Delete";
+      y.addEventListener("click", () => { confirmLevel = null; for (const n of [...S.notes.values()]) if (n.level === l.id) Store.saveNote({ ...n, level: "" }); S.settings.levels = levels().filter(x => x.id !== l.id); Store.saveMeta(); onData(); });
+      const no = document.createElement("button"); no.className = "btn ghost sm"; no.textContent = "Cancel"; no.addEventListener("click", () => { confirmLevel = null; renderLevels(); });
+      c.append(y, no); wrap.append(c);
+    }
+  });
+  if (!levels().length) wrap.innerHTML = `<p class="empty-note">No levels. Add one below.</p>`;
+  applyReadOnly();
+}
+$("#addGroup").addEventListener("click", () => {
+  const name = $("#newGroupName").value.trim(); if (!name) { $("#newGroupName").focus(); return; }
+  Store.saveGroup({ id: uid("g"), name, color: newGroupColor, order: S.groups.size });
+  $("#newGroupName").value = ""; newGroupColor = SWATCHES[(SWATCHES.indexOf(newGroupColor) + 1) % SWATCHES.length]; renderGroups();
+});
+$("#newGroupName").addEventListener("keydown", e => { if (e.key === "Enter") $("#addGroup").click(); });
+$("#addLevel").addEventListener("click", () => {
+  const name = $("#newLevelName").value.trim(); if (!name) { $("#newLevelName").focus(); return; }
+  S.settings.levels = [...levels(), { id: uid("L"), name }]; $("#newLevelName").value = ""; Store.saveMeta(); onData();
+});
+$("#newLevelName").addEventListener("keydown", e => { if (e.key === "Enter") $("#addLevel").click(); });
+
+/* ================= sidebar: graph settings ================= */
+const SLIDERS = { repel: v => Math.round(v), linkDist: v => Math.round(v), gravity: v => v.toFixed(3), nodeScale: v => v.toFixed(1) + "×", labelZoom: v => v.toFixed(2) + "×" };
+function syncSettingsUI() {
+  for (const k in SLIDERS) { const el = $("#s-" + k); if (document.activeElement !== el) el.value = S.settings[k]; $("#o-" + k).textContent = SLIDERS[k](+S.settings[k]); }
+  for (const k of ["showGhosts", "showOrphans", "pinOnDrag"]) $("#s-" + k).checked = !!S.settings[k];
+}
+for (const k in SLIDERS) $("#s-" + k).addEventListener("input", e => { S.settings[k] = +e.target.value; $("#o-" + k).textContent = SLIDERS[k](+e.target.value); G.alpha = Math.max(G.alpha, 0.5); G.dirty = true; Store.saveMeta(); });
+for (const k of ["showGhosts", "showOrphans", "pinOnDrag"]) $("#s-" + k).addEventListener("change", e => { S.settings[k] = e.target.checked; Store.saveMeta(); onData(); });
+$("#brainName").addEventListener("change", e => { if (!S.meta) return; S.meta.name = e.target.value.trim() || "Untitled brain"; Store.saveMeta(200); });
+$("#brainName").addEventListener("keydown", e => { if (e.key === "Enter") e.target.blur(); });
+$("#reheat").addEventListener("click", () => { for (const n of G.nodes.values()) if (!n.pinned) { n.x += (Math.random() - .5) * 60; n.y += (Math.random() - .5) * 60; } G.alpha = 1; setTimeout(() => fit(), 900); });
+$("#unpinAll").addEventListener("click", () => { let c = 0; for (const n of S.notes.values()) if (n.pinned) { Store.saveNote({ ...n, pinned: false, x: null, y: null }); c++; } G.alpha = .8; toast(c ? `Unpinned ${c} note${c > 1 ? "s" : ""}.` : "No pinned notes."); });
+$("#resetForces").addEventListener("click", () => { S.settings = { ...DEFAULTS, levels: levels() }; syncSettingsUI(); Store.saveMeta(); onData(); G.alpha = 1; });
+$("#exportBtn").addEventListener("click", () => {
+  const data = JSON.stringify({ format: "blank-brain/2", name: S.meta && S.meta.name, settings: S.settings, groups: [...S.groups.values()], notes: [...S.notes.values()] }, null, 1);
+  const box = $("#importBox");
+  try { navigator.clipboard.writeText(data).then(() => toast("Brain copied as JSON. Paste it somewhere safe."), () => { box.value = data; box.select(); toast("Copy blocked here. The JSON is selected in the box, so copy it from there."); }); }
+  catch (e) { box.value = data; box.select(); }
+});
+$("#importBtn").addEventListener("click", async () => {
+  const msg = $("#importMsg"); let data;
+  try { data = JSON.parse($("#importBox").value); } catch (e) { msg.textContent = "That isn't valid JSON."; return; }
+  if (!data || !Array.isArray(data.notes)) { msg.textContent = "Expected an object with a notes list."; return; }
+  msg.textContent = "Importing…";
+  if (data.settings) { S.settings = mergeSettings(data.settings); syncSettingsUI(); Store.saveMeta(); }
+  for (const g of (data.groups || [])) if (g && g.id && g.name) await Store.saveGroup({ id: String(g.id).replace(/[^A-Za-z0-9_\-.~:@+]/g, "") || uid("g"), name: String(g.name), color: SWATCHES.includes(g.color) ? g.color : "slate", order: +g.order || 0 });
+  let c = 0;
+  for (const n of data.notes) { if (!n || !n.title) continue; await Store.saveNote(normNote({ ...n, id: n.id ? String(n.id).replace(/[^A-Za-z0-9_\-.~:@+]/g, "") || uid("n") : uid("n") })); c++; }
+  msg.textContent = `Imported ${c} note${c === 1 ? "" : "s"}.`; $("#importBox").value = ""; setTimeout(() => fit(), 1200);
+});
+
+/* tabs / chrome */
+document.querySelectorAll(".tabs button").forEach(b => b.addEventListener("click", () => {
+  document.querySelectorAll(".tabs button").forEach(x => x.setAttribute("aria-selected", String(x === b)));
+  for (const t of ["notes", "groups", "graph"]) $("#pane-" + t).hidden = t !== b.dataset.tab;
+}));
+function closeSide() { $("#side").classList.add("collapsed"); $("#scrim").classList.remove("show"); setTimeout(resize, 220); }
+function openSide() { $("#side").classList.remove("collapsed"); if (narrow()) $("#scrim").classList.add("show"); setTimeout(resize, 220); }
+$("#toggleSide").addEventListener("click", () => $("#side").classList.contains("collapsed") ? openSide() : closeSide());
+$("#scrim").addEventListener("click", closeSide);
+$("#backHome").addEventListener("click", () => { location.hash = ""; });
+$("#fitBtn").addEventListener("click", () => fit());
+const addCentre = () => newNote(G.nodes.size ? toWorld(G.w / 2 + 40, G.h / 2) : { x: 0, y: 0 });
+$("#newNote").addEventListener("click", addCentre);
+$("#addHere").addEventListener("click", addCentre);
+$("#emptyAdd").addEventListener("click", () => newNote({ x: 0, y: 0 }));
+$("#search").addEventListener("input", e => { S.search = lc(e.target.value); renderList(); G.dirty = true; });
+$("#search").addEventListener("keydown", e => {
+  if (e.key === "Enter") { const first = filteredNotes()[0]; if (first) openNote(first.id); }
+  if (e.key === "Escape") { e.target.value = ""; S.search = ""; renderList(); G.dirty = true; e.target.blur(); }
+});
+document.addEventListener("keydown", e => {
+  if (S.view !== "brain") return;
+  const typing = /INPUT|TEXTAREA|SELECT/.test(document.activeElement.tagName);
+  if (e.key === "Escape" && !typing && S.selected) closeNote();
+  if (typing || e.metaKey || e.ctrlKey || e.altKey) return;
+  if (e.key === "/") { e.preventDefault(); $("#search").focus(); }
+  if (e.key === "n" || e.key === "N") { e.preventDefault(); addCentre(); }
+  if ((e.key === "e" || e.key === "E") && S.selected) { e.preventDefault(); setEditing(!S.editing); }
+});
+
+/* ================= orchestration ================= */
+let firstFit = false;
+function renderLegend() {
+  const el = $("#legend"); const lv = levels().slice(0, 4);
+  el.innerHTML = lv.map((l, i) => { const r = LEVEL_R[Math.min(i, LEVEL_R.length - 1)]; return `<span><i style="width:${r}px;height:${r}px"></i>${esc(l.name)}</span>`; }).join("");
+}
+function syncBrainStats() {
+  if (!S.meta || !S.notesLoaded || S.readOnly) return;
+  const linkCount = [...S.adj.values()].reduce((a, s) => a + s.size, 0) / 2;
+  const used = new Set(); for (const n of S.notes.values()) { const g = S.groups.get(n.group); if (g) used.add(g.color); }
+  const colors = SWATCHES.filter(s => used.has(s));
+  const last = Math.max(S.meta.created || 0, ...[...S.notes.values()].map(n => n.updated));
+  const m = S.meta;
+  if (m.noteCount !== S.notes.size || m.linkCount !== linkCount || String(m.colors || []) !== String(colors) || (m.updated || 0) < last) {
+    m.noteCount = S.notes.size; m.linkCount = linkCount; m.colors = colors; m.updated = Math.max(m.updated || 0, last);
+    Store.saveMeta(1200);
+  }
+}
+function onData() {
+  if (S.view !== "brain") return;
+  rebuild(); renderList(); renderGroups(); renderLegend();
+  const lc2 = [...S.adj.values()].reduce((a, s) => a + s.size, 0) / 2;
+  $("#stats").textContent = `${S.notes.size} note${S.notes.size === 1 ? "" : "s"} · ${lc2} link${lc2 === 1 ? "" : "s"}`;
+  $("#emptyState").hidden = S.notes.size > 0 || !S.notesLoaded;
+  if (S.selected) renderNote(false);
+  if (document.activeElement !== $("#brainName") && S.meta) $("#brainName").value = S.meta.name || "Untitled brain";
+  syncBrainStats();
+  if (!firstFit && G.nodes.size && S.notesLoaded) { firstFit = true; setTimeout(() => fit(false), 700); }
+}
+
+/* ================= hand control ================= */
+// Webcam gestures, one hand. Runs MediaPipe in the page, so it can see the graph:
+// the cursor snaps to the nearest node (or button), which is what makes selection easy.
+//   index out = move · pinch = open / drag (node: move it, empty canvas: pan)
+//   V = zoom at cursor (over a panel: scroll) · fist = clutch · palm hold = close note / fit
+//   both palms = pause / resume. Pauses itself while you type.
+const HC = (() => {
+  const MP = "https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.21";
+  const MODEL = "https://storage.googleapis.com/mediapipe-models/hand_landmarker/hand_landmarker/float16/1/hand_landmarker.task";
+  const PREF = Object.assign({ speed: 1, snap: 28, pinch: 28, hand: "Right", cam: true }, ls.get("bb-hc", {}));
+  const K = {
+    gainSlow: 0.55, gainFast: 2.4, speedSlow: 0.06, speedFast: 0.7, // screen-widths per camera-width of hand travel
+    euroMin: 1.2, euroBeta: 18,                                         // One Euro filter on the palm
+    pinchGap: 14, pinchSemi: 65, semiMin: 0.18,                         // release = close + gap (mm); slow cursor as fingers close
+    deadzone: 14, stable: 3, lostGrace: 250, extRatio: 1.22, reachMin: 1.25,
+    zoomSpeed: 7, scrollSpeed: 2.4, settle: 120,
+    palmHold: 700, armHold: 1000, tapGap: 150,
+  };
+  const PALM = [0, 5, 9, 13, 17];
+  const CONN = [[0,1],[1,2],[2,3],[3,4],[0,5],[5,6],[6,7],[7,8],[5,9],[9,10],[10,11],[11,12],[9,13],[13,14],[14,15],[15,16],[13,17],[17,18],[18,19],[19,20],[0,17]];
+  const ROWS = [["POINT","Move","index","teal"],["PINCH","Open / drag","pinch","ink"],["ZOOM","Zoom / scroll","V · up = in","moss"],
+                ["CLUTCH","Clutch","fist","slate"],["PALM","Close / fit","palm hold","ochre"],["BOTH","Pause","both palms","rose"]];
+  const CLICKABLE = "button:not(:disabled), a[href], input:not(:disabled), select:not(:disabled), textarea:not(:disabled), label, [role=link], [role=tab], .wl, .item, .chip, .peek-card, .brain-card, .new-card";
+  const clamp = (v, a, b) => Math.min(Math.max(v, a), b);
+  const smooth = (x, lo, hi) => { if (hi <= lo) return 1; const u = clamp((x - lo) / (hi - lo), 0, 1); return u * u * (3 - 2 * u); };
+  const d3 = (a, b) => Math.hypot(a.x - b.x, a.y - b.y, (a.z || 0) - (b.z || 0));
+
+  class OneEuro {
+    constructor(min, beta, d = 1) { this.min = min; this.beta = beta; this.d = d; this.reset(); }
+    reset() { this.x = null; this.dx = [0, 0]; this.t = null; }
+    static a(dt, c) { return 1 / (1 + 1 / (2 * Math.PI * c) / dt); }
+    f(x, t) {
+      if (this.t == null) { this.x = x.slice(); this.dx = [0, 0]; this.t = t; return x.slice(); }
+      const dt = Math.max(t - this.t, 1e-4), out = [0, 0];
+      for (let i = 0; i < 2; i++) {
+        const dxi = (x[i] - this.x[i]) / dt, ad = OneEuro.a(dt, this.d);
+        this.dx[i] = ad * dxi + (1 - ad) * this.dx[i];
+        const a = OneEuro.a(dt, this.min + this.beta * Math.abs(this.dx[i]));
+        out[i] = a * x[i] + (1 - a) * this.x[i];
+      }
+      this.x = out; this.t = t; return out;
+    }
+  }
+
+  const H = {
+    on: false, ready: false, sim: false, armed: true, error: "", lm: null, stream: null, lastVT: -1, loop: 0,
+    filt: new OneEuro(K.euroMin, K.euroBeta), mode: "IDLE", pending: null, pendingN: 0, prev: null, prevT: 0,
+    lostT0: null, armT0: null, armFired: false, palmT0: null, palmFired: false, zoomT0: 0, zoomTarget: null,
+    cur: { x: 0, y: 0 }, disp: { x: 0, y: 0, w: 22, h: 22 }, snap: null, hoverEl: null, press: null,
+    releaseN: 0, lastRelease: 0, event: "", eventT: -1e9, primary: null, hands: [], fps: 0, fpsN: 0, fpsT: 0, drawn: false,
+  };
+
+  /* ---- landmarks -> hand observation ---- */
+  function analyse(lm, wl, rawLabel, vw, vh) {
+    const ext = (tip, pip) => d3(wl[0], wl[tip]) > K.extRatio * d3(wl[0], wl[pip]);
+    const [i, m, r, p] = [ext(8, 6), ext(12, 10), ext(16, 14), ext(20, 18)];
+    const pose = i && m && r && p ? "PALM" : !(i || m || r || p) ? "FIST" : i && !m && !r && !p ? "POINT" : i && m && !r && !p ? "V" : "OTHER";
+    let px = 0, py = 0; for (const j of PALM) { px += 1 - lm[j].x; py += lm[j].y; }
+    // MediaPipe labels assume a mirrored (selfie) image; we feed the raw camera, so swap.
+    const label = rawLabel === "Left" ? "Right" : rawLabel === "Right" ? "Left" : "Right";
+    return { label, palm: [px / 5, (py / 5) * vh / vw], pinch: d3(wl[4], wl[8]) * 1000,
+             reach: d3(wl[0], wl[8]) / Math.max(d3(wl[0], wl[5]), 1e-6), pose, lm };
+  }
+  function pick(hands) {
+    if (!hands.length) return null;
+    if (PREF.hand !== "Any") { const m = hands.find(h => h.label === PREF.hand); if (m) return m; }
+    if (hands.length === 1) return hands[0];
+    return PREF.hand === "Any" ? hands.reduce((a, b) => (b.palm[0] > a.palm[0] ? b : a)) : null;
+  }
+  const typing = () => { const a = document.activeElement; return !!a && (a.tagName === "TEXTAREA" || (a.tagName === "INPUT" && !/^(range|checkbox|radio|button)$/.test(a.type))); };
+  function flash(t) { H.event = t; H.eventT = performance.now(); }
+
+  /* ---- what is under the cursor ---- */
+  function nodeAt(x, y) {
+    const r = cv.getBoundingClientRect(), px = x - r.left, py = y - r.top;
+    let best = null, bs = Infinity;
+    for (const n of G.nodes.values()) {
+      const sx = n.x * G.t.k + G.t.x, sy = n.y * G.t.k + G.t.y, nr = Math.max(2, radius(n) * Math.sqrt(G.t.k));
+      const dd = Math.hypot(px - sx, py - sy) - nr, held = n.id === H.snap;
+      const lim = Math.max(PREF.snap, 5) * (held ? 1.35 : 1), score = dd - (held ? 6 : 0);
+      if (dd < lim && score < bs) { bs = score; best = n; }
+    }
+    return best;
+  }
+  function clickableAt(x, y) {
+    for (const [ox, oy] of [[0,0],[12,0],[-12,0],[0,12],[0,-12],[9,9],[-9,9],[9,-9],[-9,-9]]) {
+      const el = document.elementFromPoint(x + ox, y + oy);
+      if (!el || el === cv) continue;
+      const c = el.closest(CLICKABLE); if (c) return c;
+    }
+    return null;
+  }
+  function scrollerOf(el) {
+    for (let e = el; e && e !== document.body && e !== document.documentElement; e = e.parentElement) {
+      const o = getComputedStyle(e).overflowY;
+      if ((o === "auto" || o === "scroll") && e.scrollHeight > e.clientHeight + 2) return e;
+    }
+    return null;
+  }
+  function setSnap(id) {
+    if (id === H.snap) return;
+    H.snap = id; G.hover = id; G.dirty = true; cv.classList.toggle("over", !!id);
+  }
+  function refreshTarget() {
+    if (H.press || !H.armed) return;
+    const el = document.elementFromPoint(H.cur.x, H.cur.y);
+    if (el === cv && S.view === "brain") { const n = nodeAt(H.cur.x, H.cur.y); setSnap(n ? n.id : null); H.hoverEl = null; }
+    else { setSnap(null); H.hoverEl = clickableAt(H.cur.x, H.cur.y); }
+  }
+
+  /* ---- actions ---- */
+  function moveCursor(dx, dy) { H.cur.x = clamp(H.cur.x + dx, 0, innerWidth - 1); H.cur.y = clamp(H.cur.y + dy, 0, innerHeight - 1); }
+  function startPress() {
+    H.mode = "PINCH"; H.releaseN = 0;
+    const base = { acc: [0, 0], drag: false };
+    if (H.snap && G.nodes.has(H.snap)) H.press = { ...base, kind: "node", id: H.snap };
+    else if (H.hoverEl && H.hoverEl.isConnected) H.press = { ...base, kind: "el", el: H.hoverEl, scroller: scrollerOf(H.hoverEl) };
+    else {
+      const el = document.elementFromPoint(H.cur.x, H.cur.y);
+      H.press = el === cv ? { ...base, kind: "pan" } : { ...base, kind: "scroll", scroller: scrollerOf(el) };
+    }
+  }
+  function applyDrag(P, dx, dy) {
+    if (P.kind === "node") {
+      const n = G.nodes.get(P.id); if (!n) return;
+      if (!G.drag || G.drag.id !== P.id) G.drag = { id: P.id, start: { x: 0, y: 0 }, moved: true, shift: false };
+      n.x += dx / G.t.k; n.y += dy / G.t.k; G.alpha = Math.max(G.alpha, 0.3); G.dirty = true;
+    } else if (P.kind === "pan") { G.t.x += dx; G.t.y += dy; G.fitted = true; G.dirty = true; }
+    else if (P.scroller) { P.scroller.scrollTop -= dy; }
+  }
+  function pressMove(dpx) {
+    const P = H.press; if (!P) return;
+    moveCursor(dpx[0], dpx[1]);
+    if (!P.drag) {
+      P.acc[0] += dpx[0]; P.acc[1] += dpx[1];
+      if (Math.hypot(P.acc[0], P.acc[1]) <= K.deadzone) return;
+      P.drag = true; applyDrag(P, P.acc[0], P.acc[1]);
+    } else applyDrag(P, dpx[0], dpx[1]);
+  }
+  function activate(el) {
+    if (!el || !el.isConnected) return;
+    if (el.matches("input:not([type=checkbox]):not([type=radio]):not([type=range]):not([type=button]), textarea, select")) { el.focus(); flash("Type now"); return; }
+    el.click(); flash("Click");
+  }
+  function endPress(t, cancel) {
+    const P = H.press; H.press = null; if (!P) return;
+    H.lastRelease = t;
+    if (P.kind === "node") {
+      const n = G.nodes.get(P.id);
+      if (P.drag) {
+        if (G.drag && G.drag.id === P.id) G.drag = null;
+        if (n && !n.ghost && (S.settings.pinOnDrag || n.pinned) && !S.readOnly) {
+          const note = S.notes.get(n.id); if (note) Store.saveNote({ ...note, pinned: true, x: Math.round(n.x), y: Math.round(n.y) });
+        }
+        flash("Moved");
+      } else if (!cancel && n) { n.ghost ? createFromGhost(n.title) : openNote(n.id); flash(n.ghost ? "Create" : "Open"); }
+    } else if (P.kind === "pan") {
+      if (P.drag) flash("Pan");
+      else if (!cancel && S.selected) { closeNote(); flash("Close"); }
+    } else if (P.kind === "el" && !P.drag && !cancel) activate(P.el);
+  }
+  function zoomOrScroll(dy) {
+    const T = H.zoomTarget;
+    if (T === "canvas") { const r = cv.getBoundingClientRect(); zoomAt(H.cur.x - r.left, H.cur.y - r.top, Math.exp(-dy * K.zoomSpeed)); }
+    else if (T) T.scrollTop += dy * K.scrollSpeed * innerHeight;
+  }
+  function palmAction() {
+    if (typing()) { document.activeElement.blur(); flash("Done typing"); return; }
+    if (S.view !== "brain") return;
+    if (S.selected) { closeNote(); flash("Close"); return; }
+    if (S.search) { S.search = ""; $("#search").value = ""; renderList(); G.dirty = true; flash("Clear search"); return; }
+    fit(); flash("Fit");
+  }
+
+  /* ---- the state machine (same grammar as the Python version) ---- */
+  function update(hands, t) {
+    H.hands = hands;
+    if (hands.length >= 2 && hands[0].pose === "PALM" && hands[1].pose === "PALM") {
+      if (H.armT0 == null) { H.armT0 = t; H.armFired = false; endPress(t, true); }
+      else if (!H.armFired && t - H.armT0 >= K.armHold / 1000) {
+        H.armed = !H.armed; H.armFired = true; flash(H.armed ? "Resumed" : "Paused");
+        if (!H.armed) { setSnap(null); H.hoverEl = null; }
+      }
+      H.mode = "BOTH"; H.prev = null; H.filt.reset(); H.primary = null; return;
+    }
+    H.armT0 = null;
+    const h = pick(hands); H.primary = h;
+    if (!h) {
+      if (H.lostT0 == null) H.lostT0 = t;
+      if (t - H.lostT0 > K.lostGrace / 1000 && H.mode !== "IDLE") { endPress(t, true); H.mode = "IDLE"; H.pending = null; H.pendingN = 0; H.prev = null; H.filt.reset(); }
+      return;
+    }
+    H.lostT0 = null;
+    if (!H.armed) { H.mode = "PAUSED"; H.prev = null; H.filt.reset(); return; }
+    if (typing()) {
+      endPress(t, true); H.prev = null; H.filt.reset();
+      if (h.pose === "PALM") {
+        if (H.mode !== "PALM") { H.mode = "PALM"; H.palmT0 = t; H.palmFired = false; }
+        else if (!H.palmFired && t - H.palmT0 >= K.palmHold / 1000) { H.palmFired = true; palmAction(); }
+      } else H.mode = "TYPING";
+      return;
+    }
+    const p = H.filt.f(h.palm, t);
+    let d = [0, 0], dt = 1 / 30;
+    if (H.prev) { d = [p[0] - H.prev[0], p[1] - H.prev[1]]; dt = Math.max(t - H.prevT, 1e-3); }
+    H.prev = p; H.prevT = t;
+    const speed = Math.hypot(d[0], d[1]) / dt;
+    const g = (K.gainSlow + (K.gainFast - K.gainSlow) * smooth(speed, K.speedSlow, K.speedFast)) * PREF.speed * innerWidth;
+    const dpx = [d[0] * g, d[1] * g], on = PREF.pinch, off = PREF.pinch + K.pinchGap;
+
+    if (H.mode === "PINCH") {
+      H.releaseN = h.pinch > off ? H.releaseN + 1 : 0;
+      if (H.releaseN >= 2) { endPress(t, false); H.mode = "POINT"; H.pending = "POINT"; H.pendingN = K.stable; }
+      else pressMove(dpx);
+      return;
+    }
+    if ((H.mode === "POINT" || H.mode === "HOLD") && h.reach > K.reachMin && h.pinch < on && t - H.lastRelease > K.tapGap / 1000) { startPress(); return; }
+
+    const target = { POINT: "POINT", V: "ZOOM", FIST: "CLUTCH", PALM: "PALM" }[h.pose] || "HOLD";
+    if (target === H.pending) H.pendingN++; else { H.pending = target; H.pendingN = 1; }
+    if (target !== H.mode && H.pendingN >= K.stable) {
+      H.mode = target;
+      if (target === "PALM") { H.palmT0 = t; H.palmFired = false; }
+      if (target === "ZOOM") { H.zoomT0 = t; const el = document.elementFromPoint(H.cur.x, H.cur.y); H.zoomTarget = el === cv ? "canvas" : scrollerOf(el); }
+    }
+    if (H.mode === "POINT") {
+      const k = K.semiMin + (1 - K.semiMin) * smooth(h.pinch, on, K.pinchSemi);
+      moveCursor(dpx[0] * k, dpx[1] * k);
+    } else if (H.mode === "ZOOM" && t - H.zoomT0 >= K.settle / 1000) zoomOrScroll(d[1]);
+    else if (H.mode === "PALM" && !H.palmFired && t - H.palmT0 >= K.palmHold / 1000) { H.palmFired = true; palmAction(); }
+  }
+
+  /* ---- drawing: cursor, HUD, camera overlay ---- */
+  function renderCursor() {
+    const ring = $("#hcRing"), dot = $("#hcDot");
+    let x = H.cur.x, y = H.cur.y, w = 22, h = 22, rect = false;
+    const node = H.snap && S.view === "brain" ? G.nodes.get(H.snap) : null;
+    if (node) {
+      const r = cv.getBoundingClientRect(), nr = Math.max(2, radius(node) * Math.sqrt(G.t.k));
+      x = r.left + node.x * G.t.k + G.t.x; y = r.top + node.y * G.t.k + G.t.y; w = h = 2 * nr + 16;
+    } else if (H.hoverEl && H.hoverEl.isConnected) {
+      const b = H.hoverEl.getBoundingClientRect(); x = b.left + b.width / 2; y = b.top + b.height / 2; w = b.width + 8; h = b.height + 8; rect = true;
+    }
+    const D = H.disp, e = H.press && H.press.drag ? 1 : 0.5;
+    D.x += (x - D.x) * e; D.y += (y - D.y) * e; D.w += (w - D.w) * 0.4; D.h += (h - D.h) * 0.4;
+    ring.style.transform = `translate(${D.x - D.w / 2}px,${D.y - D.h / 2}px)`;
+    ring.style.width = D.w + "px"; ring.style.height = D.h + "px";
+    const cls = [];
+    if (rect) cls.push("rect");
+    if (H.press) cls.push("down");
+    if (!H.primary || H.mode === "CLUTCH" || H.mode === "IDLE" || H.mode === "TYPING") cls.push("idle");
+    if (!H.armed) cls.push("paused");
+    if (H.mode === "ZOOM") cls.push("zoom");
+    ring.className = cls.join(" ");
+    dot.style.transform = `translate(${H.cur.x}px,${H.cur.y}px)`;
+    dot.classList.toggle("hide", !(node || rect) || !H.armed);
+  }
+  let rowEls = [];
+  function setPill(text, kind) { const p = $("#hcPill"); p.className = "pill" + (kind ? " " + kind : ""); p.lastElementChild.textContent = text; }
+  function renderHud(now) {
+    const hc = $("#hc"), note = $("#note");
+    hc.style.right = (S.view === "brain" && !note.hidden && !narrow() ? note.offsetWidth + 16 : 16) + "px";
+    if (!H.on) return;
+    if (H.error) setPill("Off", "bad");
+    else if (!H.ready && !H.sim) setPill("Starting", "warn");
+    else if (!H.armed) setPill("Paused", "warn");
+    else if (typing()) setPill("Typing", "warn");
+    else if (!H.primary) setPill("No hand", "warn");
+    else setPill("Active", "");
+    const t = now / 1000;
+    for (const r of rowEls) {
+      const m = r.dataset.m, on = H.mode === m || (m === "BOTH" && H.armT0 != null);
+      r.classList.toggle("on", on);
+      let f = 0;
+      if (on && m === "PALM" && !H.palmFired && H.palmT0 != null) f = (t - H.palmT0) / (K.palmHold / 1000);
+      if (on && m === "BOTH" && !H.armFired && H.armT0 != null) f = (t - H.armT0) / (K.armHold / 1000);
+      r.lastElementChild.style.transform = `scaleX(${clamp(f, 0, 1)})`;
+    }
+    $("#hcHand").textContent = (H.primary ? H.primary.label.toLowerCase() + " hand" : "no hand") + (H.sim ? "" : ` · ${Math.round(H.fps)} fps`);
+    const mm = H.primary ? H.primary.pinch : null;
+    const state = H.press ? (H.press.drag ? " · drag" : " · down") : "";
+    $("#hcPinch").textContent = mm == null ? "--" : `${Math.round(mm)} mm${state}`;
+    const fill = $("#hcFill");
+    fill.style.width = (mm == null ? 0 : clamp(1 - mm / 90, 0, 1) * 100) + "%";
+    fill.classList.toggle("down", !!H.press);
+    $("#hcOnT").style.left = (1 - PREF.pinch / 90) * 100 + "%";
+    $("#hcOffT").style.left = (1 - (PREF.pinch + K.pinchGap) / 90) * 100 + "%";
+    const toastEl = $("#hcToast"), showT = now - H.eventT < 700;
+    if (showT) toastEl.textContent = H.event;
+    toastEl.classList.toggle("on", showT);
+  }
+  function drawOverlay() {
+    const c = $("#hcOverlay"), v = $("#hcVideo");
+    if ($("#hc").classList.contains("nocam") || !c.clientWidth) return;
+    const w = c.clientWidth, h = c.clientHeight, dpr = Math.min(devicePixelRatio || 1, 2);
+    if (c.width !== Math.round(w * dpr)) { c.width = Math.round(w * dpr); c.height = Math.round(h * dpr); }
+    const x = c.getContext("2d"); x.setTransform(dpr, 0, 0, dpr, 0, 0); x.clearRect(0, 0, w, h);
+    const vw = v.videoWidth || 640, vh = v.videoHeight || 480, s = Math.max(w / vw, h / vh), ox = (w - vw * s) / 2, oy = (h - vh * s) / 2;
+    const P = p => [ox + (1 - p.x) * vw * s, oy + p.y * vh * s];
+    x.lineCap = "round";
+    for (const hand of H.hands) {
+      const prim = hand === H.primary, col = prim ? C["g-teal"] : C.muted, pts = hand.lm.map(P);
+      x.strokeStyle = col; x.fillStyle = col; x.lineWidth = 1.6;
+      x.beginPath(); for (const [a, b] of CONN) { x.moveTo(...pts[a]); x.lineTo(...pts[b]); } x.stroke();
+      for (const q of pts) { x.beginPath(); x.arc(q[0], q[1], 2, 0, Math.PI * 2); x.fill(); }
+      if (!prim) continue;
+      const close = 1 - smooth(hand.pinch, PREF.pinch, K.pinchSemi);
+      if (close > 0.02) { x.strokeStyle = C["g-ochre"]; x.lineWidth = 1.5 + 3 * close; x.beginPath(); x.moveTo(...pts[4]); x.lineTo(...pts[8]); x.stroke(); }
+      let cx = 0, cy = 0; for (const j of PALM) { cx += pts[j][0] / 5; cy += pts[j][1] / 5; }
+      x.strokeStyle = H.press ? C.accent : C["g-teal"]; x.lineWidth = 1.5;
+      x.beginPath(); x.arc(cx, cy, 10, 0, Math.PI * 2);
+      for (const [dx, dy] of [[1,0],[-1,0],[0,1],[0,-1]]) { x.moveTo(cx + dx * 6, cy + dy * 6); x.lineTo(cx + dx * 16, cy + dy * 16); }
+      x.stroke();
+    }
+    if (H.armT0 != null && !H.armFired) {
+      const f = clamp((performance.now() / 1000 - H.armT0) / (K.armHold / 1000), 0, 1);
+      x.strokeStyle = C["g-rose"]; x.lineWidth = 3; x.beginPath(); x.arc(w / 2, h / 2, 26, -Math.PI / 2, -Math.PI / 2 + f * Math.PI * 2); x.stroke();
+    }
+  }
+  function frame(now) {
+    if (!H.on) { H.loop = 0; return; }
+    H.loop = requestAnimationFrame(frame);
+    const v = $("#hcVideo");
+    if (H.ready && v.readyState >= 2 && v.currentTime !== H.lastVT) {
+      H.lastVT = v.currentTime;
+      let res = null; try { res = H.lm.detectForVideo(v, now); } catch (e) { res = null; }
+      if (res) {
+        const hd = res.handedness || res.handednesses || [];
+        const hands = (res.landmarks || []).map((lm, i) => analyse(lm, res.worldLandmarks[i], ((hd[i] || [])[0] || {}).categoryName, v.videoWidth, v.videoHeight));
+        update(hands, now / 1000); H.drawn = false;
+        H.fpsN++; if (now - H.fpsT > 500) { H.fps = H.fpsN * 1000 / (now - H.fpsT); H.fpsN = 0; H.fpsT = now; }
+      }
+    }
+    if (!H.drawn) { drawOverlay(); H.drawn = true; }
+    refreshTarget(); renderCursor(); renderHud(now);
+  }
+
+  /* ---- on / off ---- */
+  function showUI(on) {
+    $("#hc").hidden = !on; $("#hcRing").hidden = !on; $("#hcDot").hidden = !on;
+    $("#hc").classList.toggle("nocam", !PREF.cam);
+    for (const b of document.querySelectorAll("[data-hc-toggle]")) b.setAttribute("aria-pressed", on ? "true" : "false");
+    document.body.classList.toggle("hc-on", on);
+  }
+  function msg(t) { const m = $("#hcMsg"); m.textContent = t; m.hidden = !t; }
+  function stopStream() { if (H.stream) { H.stream.getTracks().forEach(t => t.stop()); H.stream = null; } $("#hcVideo").srcObject = null; }
+  function begin() {
+    H.cur = { x: innerWidth / 2, y: innerHeight / 2 }; Object.assign(H.disp, H.cur);
+    H.armed = true; H.mode = "IDLE"; H.prev = null; H.filt.reset();
+    if (!H.loop) H.loop = requestAnimationFrame(frame);
+  }
+  async function start() {
+    if (H.on) return;
+    H.on = true; H.error = ""; H.ready = false; showUI(true); msg("Starting camera…");
+    try {
+      if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) throw Object.assign(new Error("Camera needs http://localhost — run blank_brain.py."), { name: "SecurityError" });
+      const stream = await navigator.mediaDevices.getUserMedia({ video: { width: { ideal: 640 }, height: { ideal: 480 }, facingMode: "user" }, audio: false });
+      if (!H.on) { stream.getTracks().forEach(t => t.stop()); return; }
+      H.stream = stream; const v = $("#hcVideo"); v.srcObject = stream; await v.play();
+      begin();
+      if (!H.lm) {
+        msg("Loading hand tracking…");
+        const { FilesetResolver, HandLandmarker } = await import(MP + "/vision_bundle.mjs");
+        const files = await FilesetResolver.forVisionTasks(MP + "/wasm");
+        const opts = delegate => ({ baseOptions: { modelAssetPath: MODEL, delegate }, runningMode: "VIDEO", numHands: 2,
+          minHandDetectionConfidence: 0.6, minHandPresenceConfidence: 0.6, minTrackingConfidence: 0.6 });
+        try { H.lm = await HandLandmarker.createFromOptions(files, opts("GPU")); }
+        catch (e) { H.lm = await HandLandmarker.createFromOptions(files, opts("CPU")); }
+      }
+      if (!H.on) return;
+      H.ready = true; msg("");
+    } catch (e) {
+      const name = e && e.name, text = name === "NotAllowedError" || name === "SecurityError" ? (name === "SecurityError" ? e.message : "Camera blocked. Allow camera access for this page, then try again.")
+        : name === "NotFoundError" ? "No camera found."
+        : name === "NotReadableError" ? "The camera is busy in another app."
+        : "Couldn't load hand tracking. It needs internet the first time.";
+      H.error = text; msg(text); toast(text); stopStream(); H.ready = false;
+      setPill("Off", "bad");
+    }
+  }
+  function stop() {
+    if (H.press) endPress(performance.now() / 1000, true);
+    H.on = false; H.ready = false; H.sim = false; H.error = ""; setSnap(null); H.hoverEl = null; H.hands = []; H.primary = null;
+    stopStream(); showUI(false);
+  }
+  const toggle = () => (H.on ? stop() : start());
+
+  /* ---- wiring ---- */
+  $("#hcModes").innerHTML = ROWS.map(([m, l, k, c]) => `<div class="hc-row" data-m="${m}" style="--c:var(--g-${c})"><span class="dot" style="background:var(--c)"></span><span class="lbl">${l}</span><span class="k">${esc(k)}</span><span class="bar"></span></div>`).join("");
+  rowEls = [...document.querySelectorAll("#hcModes .hc-row")];
+  for (const b of document.querySelectorAll("[data-hc-toggle]")) b.addEventListener("click", toggle);
+  $("#hcOff").addEventListener("click", stop);
+  $("#hcCamBtn").addEventListener("click", () => { PREF.cam = !PREF.cam; ls.set("bb-hc", PREF); $("#hc").classList.toggle("nocam", !PREF.cam); H.drawn = false; });
+  document.addEventListener("keydown", e => {
+    if ((e.key === "g" || e.key === "G") && !typing() && !e.metaKey && !e.ctrlKey && !e.altKey && !/SELECT/.test(document.activeElement.tagName)) { e.preventDefault(); toggle(); }
+  });
+  const bindRange = (id, key, fmt) => {
+    const el = $("#" + id), out = $("#o-" + id), show = () => { out.textContent = fmt(PREF[key]); };
+    el.value = PREF[key]; show();
+    el.addEventListener("input", () => { PREF[key] = +el.value; ls.set("bb-hc", PREF); show(); });
+  };
+  bindRange("hc-speed", "speed", v => v.toFixed(2) + "×");
+  bindRange("hc-snap", "snap", v => v + " px");
+  bindRange("hc-pinch", "pinch", v => v + " mm");
+  const hs = $("#hc-hand"); hs.value = PREF.hand; hs.addEventListener("change", () => { PREF.hand = hs.value; ls.set("bb-hc", PREF); });
+
+  // Test hook: open the page with ?hcsim to drive the state machine without a camera.
+  if (/[?&]hcsim\b/.test(location.search)) {
+    window.__hc = {
+      start() { H.on = true; H.sim = true; H.ready = false; H.error = ""; showUI(true); msg(""); begin(); },
+      feed(hands, tSec) { update(hands, tSec); H.drawn = false; },
+      state: () => ({ mode: H.mode, cur: { ...H.cur }, snap: H.snap, hover: H.hoverEl && (H.hoverEl.id || H.hoverEl.className), press: H.press && { kind: H.press.kind, drag: H.press.drag }, armed: H.armed, event: H.event, selected: S.selected, k: G.t.k, tx: G.t.x, ty: G.t.y }),
+      node: id => { const n = G.nodes.get(id); if (!n) return null; const r = cv.getBoundingClientRect(); return { x: r.left + n.x * G.t.k + G.t.x, y: r.top + n.y * G.t.k + G.t.y, wx: n.x, wy: n.y }; },
+      warp(x, y) { H.cur = { x, y }; },
+    };
+  }
+  return { start, stop, toggle };
+})();
+
+readColors();
+matchMedia("(prefers-color-scheme: dark)").addEventListener("change", readColors);
+new MutationObserver(readColors).observe(document.documentElement, { attributes: true, attributeFilter: ["data-theme", "class", "style"] });
+if (document.fonts && document.fonts.ready) document.fonts.ready.then(() => G.dirty = true);
+new ResizeObserver(resize).observe($("#stage"));
+renderHome();
+requestAnimationFrame(loop);
+Store.init();
+})();
+</script>
+
+</body></html>

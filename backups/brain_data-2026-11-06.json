@@ -1,0 +1,34 @@
+{
+ "brains/b-mw4ycsm1e5ae7": {
+  "name": "Untitled brain",
+  "created": 1793968213465,
+  "updated": 1793968213465,
+  "noteCount": 0,
+  "linkCount": 0,
+  "colors": [],
+  "settings": {
+   "repel": 900,
+   "linkDist": 90,
+   "gravity": 0.02,
+   "nodeScale": 1,
+   "labelZoom": 0.7,
+   "showGhosts": true,
+   "showOrphans": true,
+   "pinOnDrag": false,
+   "levels": [
+    {
+     "id": "L1",
+     "name": "Primary"
+    },
+    {
+     "id": "L2",
+     "name": "Secondary"
+    },
+    {
+     "id": "L3",
+     "name": "Tertiary"
+    }
+   ]
+  }
+ }
+}
